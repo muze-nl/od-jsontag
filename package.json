@@ -1,0 +1,39 @@
+{
+	"name": "od-jsontag",
+	"version": "0.1.0",
+	"description": "On Demand JSONTag: parse/serialize large datastructures on demand, useful for sharing data between threads",
+	"type": "module",
+	"author": "Auke van Slooten <auke@muze.nl>",
+	"keywords": [
+		"JSONTag",
+		"On Demand Parsing"
+	],
+	"homepage": "https://github.com/muze-nl/od-jsontag",
+	"bugs": {
+		"url": "https://github.com/muze-nl/od-jsontag/issues"
+	},
+	"license": "MIT",
+	"main": "./src/parse.mjs",
+	"scripts": {
+		"test": "tap test/*.mjs"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/muze-nl/od-jsontag.git"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"devDependencies": {
+		"eslint": "^8.48.0",
+		"tap": "~16.3.7"
+	},
+	"files": [
+		"src/",
+		"README.md",
+		"LICENSE"
+	],
+	"dependencies": {
+		"@muze-nl/jsontag": "^0.9.2"
+	}
+}
