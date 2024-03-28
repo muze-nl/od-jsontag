@@ -28,7 +28,7 @@ export default function serialize(value, meta, skipLength=false, index=false) {
 	}
 	let references = new WeakMap()
 
-	function stringifyValue(value) {
+	function stringifyValue(value, inarray=false) {
 		let prop
 		let typeString = odJSONTag.getTypeString(value)
 		let type = odJSONTag.getType(value)
@@ -80,16 +80,21 @@ export default function serialize(value, meta, skipLength=false, index=false) {
 				prop = typeString + value
 			break
 			case 'array': 
-				let entries = value.map(e => stringifyValue(e)).join(',')
+				let entries = value.map(e => stringifyValue(e, true)).join(',')
 				prop = typeString + '[' + entries + ']'
 			break
 			case 'object':
 				if (!value) {
 					prop = 'null'
 				} else if (value[isProxy]) {
-					prop = decoder.decode(value[getBuffer](current))
+					if (inarray) {
+						prop = '~'+value[getIndex]
+					} else {
+						prop = decoder.decode(value[getBuffer](current))
+					}
 				} else {
 					if (!references.has(value)) {
+						console.log('adding',value)
 						references.set(value, resultArray.length)
 						resultArray.push(value)
 					}

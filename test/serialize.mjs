@@ -149,3 +149,13 @@ tap.test('nonEnumerableArrayProxy', t => {
 	t.same(root.arr[2], 'baz')
 	t.end()
 })
+
+tap.test('nonEnumerableArrayLink', t => {
+	let strData = `(53)<object class="foo" id="1">{"name":"Foo",#"arr":[~0]}`
+	let root = parse(strData, {}, false)
+	root.name = 'Bar' // force change
+	let buf = serialize(root)
+	let str = stringify(buf)
+	t.same(str, `(53)<object class="foo" id="1">{"name":"Bar",#"arr":[~0]}`)
+	t.end()
+})
