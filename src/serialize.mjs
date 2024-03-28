@@ -94,7 +94,6 @@ export default function serialize(value, meta, skipLength=false, index=false) {
 					}
 				} else {
 					if (!references.has(value)) {
-						console.log('adding',value)
 						references.set(value, resultArray.length)
 						resultArray.push(value)
 					}
