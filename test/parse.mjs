@@ -78,3 +78,19 @@ tap.test('unicode', t => {
 	t.equal(root.foo, '𠮷a')
 	t.end()
 })
+
+tap.test('accss', t => {
+	let strData = `(64)<object class="foo" id="1">{"name":"Foo",#"nonEnumerable":"bar"}	`
+	let access = (entity, property) => {
+		if (property=='name') {
+			return true
+		}
+		return false
+	}
+	let root = parse(strData, { access })
+	let name = root.name
+	let ne = root.nonEnumerable
+	t.equal(name, 'Foo')
+	t.equal(ne, undefined)
+	t.end()
+})

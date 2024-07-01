@@ -25,7 +25,9 @@ export default function parse(input, meta, immutable=true)
     if (!meta.baseURL) {
         meta.baseURL = 'http://localhost/'
     }
-
+    if (!meta.access) {
+        meta.access = () => true
+    }
     let at, ch, value, result;
     let escapee = {
         '"': '"',
@@ -688,6 +690,9 @@ export default function parse(input, meta, immutable=true)
                 } else if (prop===isChanged) {
                     return true
                 } else {
+                    if (!meta.access(target, prop)) {
+                        return undefined
+                    }
                     if (Array.isArray(target[prop])) {
                         return new Proxy(target[prop], handlers.newArrayHandler)
                     }
@@ -695,6 +700,9 @@ export default function parse(input, meta, immutable=true)
                 }
             },
             set(target, prop, value) {
+                if (!meta.access(target, prop)) {
+                    return undefined
+                }
                 if (JSONTag.getType(value)==='object' && !value[isProxy]) {
                     value = getNewValueProxy(value)
                 } 
@@ -727,6 +735,9 @@ export default function parse(input, meta, immutable=true)
                         return true
                     break
                     default:
+                        if (!meta.access(target, prop)) {
+                            return undefined
+                        }
                         if (Array.isArray(target[prop])) {
                             return new Proxy(target[prop], handlers.newArrayHandler)
                         }
@@ -764,6 +775,9 @@ export default function parse(input, meta, immutable=true)
                 } else if (prop===isChanged) {
                     return target[parent][isChanged]
                 } else {
+                    if (!meta.access(target, prop)) {
+                        return undefined
+                    }
                     if (Array.isArray(target[prop])) {
                         target[prop][parent] = target[parent]
                         return new Proxy(target[prop], handlers.arrayHandler)
@@ -775,6 +789,9 @@ export default function parse(input, meta, immutable=true)
                 if (immutable) {
                     throw new Error('dataspace is immutable')
                 }
+                if (!meta.access(target, prop)) {
+                    return undefined
+                }
                 if (JSONTag.getType(value)==='object' && !value[isProxy]) {
                     value = getNewValueProxy(value)
                 } 
@@ -785,6 +802,9 @@ export default function parse(input, meta, immutable=true)
             deleteProperty(target, prop) {
                 if (immutable) {
                     throw new Error('dataspace is immutable')
+                }
+                if (!meta.access(target, prop)) {
+                    return undefined
                 }
                 //FIXME: if target[prop] was the last reference to an object
                 //that object should be deleted so that its line will become empty
@@ -799,6 +819,9 @@ export default function parse(input, meta, immutable=true)
                 firstParse(target)
                 switch(prop) {
                     case source:
+                        if (!meta.access(target, prop)) {
+                            return undefined
+                        }
                         return target
                     break
                     case isProxy:
@@ -823,6 +846,9 @@ export default function parse(input, meta, immutable=true)
                         return target[isChanged]
                     break
                     default:
+                        if (!meta.access(target, prop)) {
+                            return undefined
+                        }
                         if (Array.isArray(target[prop])) {
                             target[prop][parent] = target
                             return new Proxy(target[prop], handlers.arrayHandler)
@@ -837,6 +863,9 @@ export default function parse(input, meta, immutable=true)
                 }
                 firstParse(target)
                 if (prop!==isChanged) {
+                    if (prop!=resultSet && !meta.access(target, prop)) {
+                        return undefined
+                    }
                     if (JSONTag.getType(value)==='object' && !value[isProxy]) {
                         value = getNewValueProxy(value)
                     }
@@ -848,6 +877,9 @@ export default function parse(input, meta, immutable=true)
             deleteProperty(target, prop) {
                 if (immutable) {
                     throw new Error('dataspace is immutable')
+                }
+                if (!meta.access(target, prop)) {
+                    return undefined
                 }
                 firstParse(target)
                 delete target[prop]
@@ -866,10 +898,16 @@ export default function parse(input, meta, immutable=true)
                 if (immutable) {
                     throw new Error('dataspace is immutable')
                 }
+                if (!meta.access(target, prop)) {
+                    return undefined
+                }
                 firstParse(target)
                 Object.defineProperty(target, prop, descriptor)
             },
             has(target, prop) {
+                if (!meta.access(target, prop)) {
+                    return false
+                }
                 firstParse()
                 return prop in target
             },
