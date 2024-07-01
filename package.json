@@ -1,6 +1,6 @@
 {
 	"name": "@muze-nl/od-jsontag",
-	"version": "0.1.5",
+	"version": "0.1.6",
 	"description": "On Demand JSONTag: parse/serialize large datastructures on demand, useful for sharing data between threads",
 	"type": "module",
 	"author": "Auke van Slooten <auke@muze.nl>",

@@ -25,9 +25,6 @@ export default function parse(input, meta, immutable=true)
     if (!meta.baseURL) {
         meta.baseURL = 'http://localhost/'
     }
-    if (!meta.access) {
-        meta.access = () => true
-    }
     let at, ch, value, result;
     let escapee = {
         '"': '"',
@@ -690,7 +687,7 @@ export default function parse(input, meta, immutable=true)
                 } else if (prop===isChanged) {
                     return true
                 } else {
-                    if (!meta.access(target, prop)) {
+                    if (meta.access && !meta.access(target, prop)) {
                         return undefined
                     }
                     if (Array.isArray(target[prop])) {
@@ -700,7 +697,7 @@ export default function parse(input, meta, immutable=true)
                 }
             },
             set(target, prop, value) {
-                if (!meta.access(target, prop)) {
+                if (meta.access && !meta.access(target, prop)) {
                     return undefined
                 }
                 if (JSONTag.getType(value)==='object' && !value[isProxy]) {
@@ -735,7 +732,7 @@ export default function parse(input, meta, immutable=true)
                         return true
                     break
                     default:
-                        if (!meta.access(target, prop, 'get')) {
+                        if (meta.access && !meta.access(target, prop, 'get')) {
                             return undefined
                         }
                         if (Array.isArray(target[prop])) {
@@ -746,7 +743,7 @@ export default function parse(input, meta, immutable=true)
                 } 
             },
             set(target, prop, value) {
-                if (!meta.access(target, prop, 'set')) {
+                if (meta.access && !meta.access(target, prop, 'set')) {
                     return undefined
                 }
                 if (JSONTag.getType(value)==='object' && !value[isProxy]) {
@@ -778,7 +775,7 @@ export default function parse(input, meta, immutable=true)
                 } else if (prop===isChanged) {
                     return target[parent][isChanged]
                 } else {
-                    if (!meta.access(target, prop, 'get')) {
+                    if (meta.access && !meta.access(target, prop, 'get')) {
                         return undefined
                     }
                     if (Array.isArray(target[prop])) {
@@ -792,7 +789,7 @@ export default function parse(input, meta, immutable=true)
                 if (immutable) {
                     throw new Error('dataspace is immutable')
                 }
-                if (!meta.access(target, prop, 'set')) {
+                if (meta.access && !meta.access(target, prop, 'set')) {
                     return undefined
                 }
                 if (JSONTag.getType(value)==='object' && !value[isProxy]) {
@@ -806,7 +803,7 @@ export default function parse(input, meta, immutable=true)
                 if (immutable) {
                     throw new Error('dataspace is immutable')
                 }
-                if (!meta.access(target, prop, 'deleteProperty')) {
+                if (meta.access && !meta.access(target, prop, 'deleteProperty')) {
                     return undefined
                 }
                 //FIXME: if target[prop] was the last reference to an object
@@ -822,7 +819,7 @@ export default function parse(input, meta, immutable=true)
                 firstParse(target)
                 switch(prop) {
                     case source:
-                        if (!meta.access(target, prop, 'get')) {
+                        if (meta.access && !meta.access(target, prop, 'get')) {
                             return undefined
                         }
                         return target
@@ -849,7 +846,7 @@ export default function parse(input, meta, immutable=true)
                         return target[isChanged]
                     break
                     default:
-                        if (!meta.access(target, prop, 'get')) {
+                        if (meta.access && !meta.access(target, prop, 'get')) {
                             return undefined
                         }
                         if (Array.isArray(target[prop])) {
@@ -866,7 +863,7 @@ export default function parse(input, meta, immutable=true)
                 }
                 firstParse(target)
                 if (prop!==isChanged) {
-                    if (prop!=resultSet && !meta.access(target, prop, 'set')) {
+                    if (prop!=resultSet && meta.access && !meta.access(target, prop, 'set')) {
                         return undefined
                     }
                     if (JSONTag.getType(value)==='object' && !value[isProxy]) {
@@ -881,7 +878,7 @@ export default function parse(input, meta, immutable=true)
                 if (immutable) {
                     throw new Error('dataspace is immutable')
                 }
-                if (!meta.access(target, prop, 'deleteProperty')) {
+                if (meta.access && !meta.access(target, prop, 'deleteProperty')) {
                     return undefined
                 }
                 firstParse(target)
@@ -901,14 +898,14 @@ export default function parse(input, meta, immutable=true)
                 if (immutable) {
                     throw new Error('dataspace is immutable')
                 }
-                if (!meta.access(target, prop, 'defineProperty')) {
+                if (meta.access && !meta.access(target, prop, 'defineProperty')) {
                     return undefined
                 }
                 firstParse(target)
                 Object.defineProperty(target, prop, descriptor)
             },
             has(target, prop) {
-                if (!meta.access(target, prop, 'has')) {
+                if (meta.access && !meta.access(target, prop, 'has')) {
                     return false
                 }
                 firstParse()
