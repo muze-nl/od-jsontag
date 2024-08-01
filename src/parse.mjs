@@ -14,6 +14,15 @@ function stringToSAB(strData) {
     return uint8sab
 }
 
+function JSONTagProxy(target, handler) {
+    let p = new Proxy(target, handler)
+    let a = JSONTag.getAttributes(target)
+    JSONTag.setAttributes(target, a)
+    let t = JSONTag.getType(target)
+    JSONTag.setType(target, t)
+    return p
+}
+
 export default function parse(input, meta, immutable=true)
 {
     if (!meta) {
@@ -37,7 +46,9 @@ export default function parse(input, meta, immutable=true)
         t: "\t"
     }
     let offsetArray = []
-    let resultArray = []
+    if (!meta.resultArray) {
+        meta.resultArray = []
+    }
 
     at = 0
     ch = " "
@@ -652,6 +663,7 @@ export default function parse(input, meta, immutable=true)
     }
 
     let parseValue = function(position, ob={}) {
+        input = position.input
         at = position.start
         next()
         return value(ob)
@@ -691,7 +703,7 @@ export default function parse(input, meta, immutable=true)
                         return undefined
                     }
                     if (Array.isArray(target[prop])) {
-                        return new Proxy(target[prop], handlers.newArrayHandler)
+                        return JSONTagProxy(target[prop], handlers.newArrayHandler)
                     }
                     return target[prop]
                 }
@@ -710,6 +722,9 @@ export default function parse(input, meta, immutable=true)
         newValueHandler: {
             get(target, prop, receiver) {
                 switch(prop) {
+                    case resultSet:
+                        return meta.resultArray
+                    break;
                     case source:
                         return target
                     break
@@ -736,7 +751,7 @@ export default function parse(input, meta, immutable=true)
                             return undefined
                         }
                         if (Array.isArray(target[prop])) {
-                            return new Proxy(target[prop], handlers.newArrayHandler)
+                            return JSONTagProxy(target[prop], handlers.newArrayHandler)
                         }
                         return target[prop]
                     break
@@ -780,7 +795,7 @@ export default function parse(input, meta, immutable=true)
                     }
                     if (Array.isArray(target[prop])) {
                         target[prop][parent] = target[parent]
-                        return new Proxy(target[prop], handlers.arrayHandler)
+                        return JSONTagProxy(target[prop], handlers.arrayHandler)
                     }
                     return target[prop]
                 }
@@ -818,6 +833,9 @@ export default function parse(input, meta, immutable=true)
             get(target, prop, receiver) {
                 firstParse(target)
                 switch(prop) {
+                    case resultSet:
+                        return meta.resultArray
+                    break;
                     case source:
                         if (meta.access && !meta.access(target, prop, 'get')) {
                             return undefined
@@ -836,7 +854,7 @@ export default function parse(input, meta, immutable=true)
                             if (target[isChanged]) {
                                 return serialize(target, null, true)
                             }
-                            return input.slice(target[position].start,target[position].end)
+                            return target[position].input.slice(target[position].start,target[position].end)
                         }
                     break
                     case getIndex:
@@ -851,25 +869,38 @@ export default function parse(input, meta, immutable=true)
                         }
                         if (Array.isArray(target[prop])) {
                             target[prop][parent] = target
-                            return new Proxy(target[prop], handlers.arrayHandler)
+                            return JSONTagProxy(target[prop], handlers.arrayHandler)
                         }
                         return target[prop]
                     break
                 }
             },
             set(target, prop, value) {
-                if (immutable && prop!==resultSet) {
+                if (immutable && prop!==resultSet && prop!==source) {
                     throw new Error('dataspace is immutable')
                 }
                 firstParse(target)
-                if (prop!==isChanged) {
-                    if (prop!=resultSet && meta.access && !meta.access(target, prop, 'set')) {
-                        return undefined
-                    }
-                    if (JSONTag.getType(value)==='object' && !value[isProxy]) {
-                        value = getNewValueProxy(value)
-                    }
-                    target[prop] = value
+                switch(prop) {
+                    case isChanged:
+                        break
+                    case source:
+                        resetObject(target)
+                        target[position] = value[position]
+                        target[isParsed] = false
+                        return true
+                        break
+                    case resultSet:
+                        break
+                    default:
+                        if (meta.access && !meta.access(target, prop, 'set')) {
+                            return undefined
+                        }
+                        if (JSONTag.getType(value)==='object' && !value[isProxy]) {
+                            value = getNewValueProxy(value)
+                        }
+                        target[prop] = value
+           
+                        break
                 }
                 target[isChanged] = true
                 return true
@@ -924,13 +955,19 @@ export default function parse(input, meta, immutable=true)
         }
     }
 
+    function resetObject(ob) {
+        for (let prop of Object.getOwnPropertyNames(ob)) {
+            delete ob[prop]
+        }
+    }
+
     const getNewValueProxy = function(value) {
-        let index = resultArray.length
-        resultArray.push('')
+        let index = meta.resultArray.length
+        meta.resultArray.push('')
         value[getIndex] = index
         makeChildProxies(value)
-        let result = new Proxy(value, handlers.newValueHandler)
-        resultArray[index] = result
+        let result = JSONTagProxy(value, handlers.newValueHandler)
+        meta.resultArray[index] = result
         return result
     }
 
@@ -942,6 +979,7 @@ export default function parse(input, meta, immutable=true)
         cache[isParsed] = false
         // current offset + length contains jsontag of this value
         cache[position] = {
+            input,
             start: at-1,
             end: at-1+length
         }
@@ -949,7 +987,7 @@ export default function parse(input, meta, immutable=true)
         next()
         // newValueHandler makes sure that value[getBuffer] runs stringify
         // arrayHandler makes sure that changes in the array set targetIsChanged to true
-        return new Proxy(cache, handlers.handler)
+        return JSONTagProxy(cache, handlers.handler)
     }
 
     value = function(ob={})
@@ -958,7 +996,7 @@ export default function parse(input, meta, immutable=true)
         whitespace()
         if (ch==='~') {
             let vOffset = offset()
-            return resultArray[vOffset]
+            return meta.resultArray[vOffset]
         }
         if (ch==='<') {
             tagOb = tag()
@@ -1019,18 +1057,40 @@ export default function parse(input, meta, immutable=true)
         return result
     }
 
-    function lengthValue(i) {
-        let l = length()
-        let v = valueProxy(l,i)
-        return [l, v]
+    function jump() {
+        next('+')
+        return number()
     }
 
+    function lengthValue(i) {
+        whitespace()
+        if (!ch) {
+            next()
+        }
+        let l, v
+        if (ch=='+') {
+            i += jump()
+        } else {
+            l = length()
+            v = valueProxy(l,i)
+        }
+        return [l, v, i]
+    }
+
+    let line = 0
     while(ch && at<input.length) {
-        result = lengthValue(resultArray.length)
+        result = lengthValue(line) // needs to return current line nr
         whitespace()
         offsetArray.push(at)
-        resultArray.push(result[1])
+        line = result[2]
+        if (result[1]) {
+            if (!meta.resultArray[line]) {
+                meta.resultArray[line] = result[1]
+            } else {
+                meta.resultArray[line][source] = result[1]
+            }
+            line++
+        }
     }
-    resultArray[0][resultSet] = resultArray  
-    return resultArray[0]
+    return meta.resultArray[0]
 }

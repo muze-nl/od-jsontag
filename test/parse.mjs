@@ -94,3 +94,20 @@ tap.test('accss', t => {
 	t.equal(ne, undefined)
 	t.end()
 })
+
+tap.test('merge', t => {
+	let meta = {}
+	let strData = `(23){"foo":[~1],"bar":[~2]}
+(64)<object class="foo" id="1">{"name":"Foo",#"nonEnumerable":"bar"}
+(57)<object class="bar" id="2">{"name":"Bar","children":[~1]}`
+	let root = parse(strData, meta)
+
+	let strData2 = `+1
+(64)<object class="foo" id="1">{"name":"Baz",#"nonEnumerable":"bar"}`
+	let root2 = parse(strData2, meta)
+
+	t.equal(root2.foo[0], root.foo[0])
+	t.equal(root.foo[0].name, 'Baz')
+	t.equal(meta.resultArray[1].name, 'Baz')
+	t.end()
+})
