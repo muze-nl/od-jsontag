@@ -159,3 +159,15 @@ tap.test('nonEnumerableArrayLink', t => {
 	t.same(str, `(53)<object class="foo" id="1">{"name":"Bar",#"arr":[~0]}`)
 	t.end()
 })
+
+tap.test('changes-only', t => {
+	let strData = `(23){"foo":[~1],"bar":[~2]}
+(45)<object id="1">{"name":"Foo","children":[~2]}
+(45)<object id="2">{"name":"Bar","children":[~1]}`
+	let data = parse(strData, {}, false)
+	data.bar[0].name = 'Baz'
+	let result = stringify(serialize(data, {changes: true}))
+	t.same(result, `+2
+(45)<object id="2">{"name":"Baz","children":[~1]}`)
+	t.end()
+})

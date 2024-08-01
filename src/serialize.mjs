@@ -15,17 +15,8 @@ function stringToSAB(strData) {
     return uint8sab
 }
 
-export default function serialize(value, meta, skipLength=false, index=false) {
+export default function serialize(value, options={}) {
 	let resultArray = []
-	if (!meta) {
-		meta = {}
-	}
-	if (!meta.index) {
-		meta.index = {}
-	}
-	if (!meta.index.id) {
-		meta.index.id = new Map()
-	}
 	let references = new WeakMap()
 
 	function stringifyValue(value, inarray=false) {
@@ -139,7 +130,7 @@ export default function serialize(value, meta, skipLength=false, index=false) {
 		if (typeof s == 'string' || s instanceof String) {
 			s = encoder.encode(s)
 		}
-		if (skipLength) {
+		if (s[0]==43 || options.skipLength) {
 			return new Uint8Array(s)
 		}
 		let length = encoder.encode('('+s.length+')')
@@ -154,16 +145,31 @@ export default function serialize(value, meta, skipLength=false, index=false) {
 	} else {
 		resultArray.push(value)
 	}
-	let current = 0
-	while(current<resultArray.length) {
-		if (resultArray[current][isChanged] || !resultArray[current][isProxy]) {
-			resultArray[current] = encoder.encode(innerStringify(current))
-		} else {
-			resultArray[current] = resultArray[current][getBuffer](current)
-		}
-		current++
+	let currentSource = 0
+	let currentResult = 0
+	let skipCount = 0
+	let result = resultArray
+	if (options.changes) {
+		result = []
 	}
-	let arr = resultArray.map(encode)
+	while(currentSource<resultArray.length) {
+		if (resultArray[currentSource][isChanged] || !resultArray[currentSource][isProxy]) {
+			if (skipCount) {
+				result[currentResult] = encoder.encode('+'+skipCount)
+				skipCount = 0
+				currentResult++
+			}
+			result[currentResult] = encoder.encode(innerStringify(currentSource))
+			currentResult++
+		} else if (!options.changes) {
+			resultArray[currentResult] = resultArray[currentSource][getBuffer](currentSource)
+			currentResult++
+		} else {
+			skipCount++
+		}
+		currentSource++
+	}
+	let arr = result.map(encode)
 	let length = 0
 	for (let line of arr) {
 		length += line.length+1
