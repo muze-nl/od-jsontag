@@ -169,7 +169,7 @@ export default function serialize(value, options={}) {
 				currentResult++
 			}
 			result[currentResult] = encoder.encode(innerStringify(currentSource))
-			if (options.meta?.index?.id) {
+			if (options.meta) {
 				const id=odJSONTag.getAttribute(resultArray[currentSource],'id')
 				if (id) {
 					options.meta.index.id.set(id, currentSource)
@@ -178,7 +178,7 @@ export default function serialize(value, options={}) {
 			currentResult++
 		} else if (!options.changes) {
 			resultArray[currentResult] = resultArray[currentSource][getBuffer](currentSource)
-			if (options.meta?.index?.id) {
+			if (options.meta) {
 				const id=odJSONTag.getAttribute(resultArray[currentSource],'id')
 				if (id) {
 					options.meta.index.id.set(id, currentSource)

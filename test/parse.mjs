@@ -1,5 +1,5 @@
 import JSONTag from '@muze-nl/jsontag'
-import {isChanged, getBuffer, getIndex} from '../src/symbols.mjs'
+import {isChanged, source, getBuffer, getIndex} from '../src/symbols.mjs'
 import parse from '../src/parse.mjs'
 import tap from 'tap'
 
@@ -21,9 +21,9 @@ tap.test('Parse', t => {
 	let root = parse(s)
 	t.equal(root.foo[0].name, 'Foo')
 	t.equal(root.foo[0], root.bar[0].children[0])
+	t.equal(JSONTag.getAttribute(root.foo[0], 'class'), 'foo')
 	t.end()
 })
-
 
 tap.test('parseSAB', t => {
 	let strData = `(23){"foo":[~1],"bar":[~2]}

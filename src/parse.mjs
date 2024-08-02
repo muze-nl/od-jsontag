@@ -14,15 +14,6 @@ function stringToSAB(strData) {
     return uint8sab
 }
 
-function JSONTagProxy(target, handler) {
-    let p = new Proxy(target, handler)
-    let a = JSONTag.getAttributes(target)
-    JSONTag.setAttributes(target, a)
-    let t = JSONTag.getType(target)
-    JSONTag.setType(target, t)
-    return p
-}
-
 export default function parse(input, meta, immutable=true)
 {
     if (!meta) {
@@ -703,7 +694,7 @@ export default function parse(input, meta, immutable=true)
                         return undefined
                     }
                     if (Array.isArray(target[prop])) {
-                        return JSONTagProxy(target[prop], handlers.newArrayHandler)
+                        return new Proxy(target[prop], handlers.newArrayHandler)
                     }
                     return target[prop]
                 }
@@ -754,7 +745,7 @@ export default function parse(input, meta, immutable=true)
                             return undefined
                         }
                         if (Array.isArray(target[prop])) {
-                            return JSONTagProxy(target[prop], handlers.newArrayHandler)
+                            return new Proxy(target[prop], handlers.newArrayHandler)
                         }
                         return target[prop]
                     break
@@ -798,7 +789,7 @@ export default function parse(input, meta, immutable=true)
                     }
                     if (Array.isArray(target[prop])) {
                         target[prop][parent] = target[parent]
-                        return JSONTagProxy(target[prop], handlers.arrayHandler)
+                        return new Proxy(target[prop], handlers.arrayHandler)
                     }
                     return target[prop]
                 }
@@ -834,7 +825,7 @@ export default function parse(input, meta, immutable=true)
         },
         handler: {
             get(target, prop, receiver) {
-                firstParse(target)
+                firstParse(target, receiver)
                 switch(prop) {
                     case resultSet:
                         return meta.resultArray
@@ -875,17 +866,17 @@ export default function parse(input, meta, immutable=true)
                         }
                         if (Array.isArray(target[prop])) {
                             target[prop][parent] = target
-                            return JSONTagProxy(target[prop], handlers.arrayHandler)
+                            return new Proxy(target[prop], handlers.arrayHandler)
                         }
                         return target[prop]
                     break
                 }
             },
-            set(target, prop, value) {
+            set(target, prop, value, receiver) {
                 if (immutable && prop!==resultSet && prop!==source) {
                     throw new Error('dataspace is immutable')
                 }
-                firstParse(target)
+                firstParse(target, receiver)
                 switch(prop) {
                     case isChanged:
                         break
@@ -955,10 +946,20 @@ export default function parse(input, meta, immutable=true)
         }
     }
 
-    const firstParse = function(target) {
+    const firstParse = function(target, receiver) {
         if (!target[isParsed]) {
             parseValue(target[position], target)
             target[isParsed] = true
+            if (receiver) {
+                let tag = JSONTag.getType(target)
+                if (tag) {
+                    JSONTag.setType(receiver, tag)
+                }
+                let attributes = JSONTag.getAttributes(target)
+                if (attributes) {
+                    JSONTag.setAttributes(receiver, attributes)
+                }
+            }
         }
     }
 
@@ -973,7 +974,7 @@ export default function parse(input, meta, immutable=true)
         meta.resultArray.push('')
         value[getIndex] = index
         makeChildProxies(value)
-        let result = JSONTagProxy(value, handlers.newValueHandler)
+        let result = new Proxy(value, handlers.newValueHandler)
         meta.resultArray[index] = result
         return result
     }
@@ -994,7 +995,7 @@ export default function parse(input, meta, immutable=true)
         next()
         // newValueHandler makes sure that value[getBuffer] runs stringify
         // arrayHandler makes sure that changes in the array set targetIsChanged to true
-        return JSONTagProxy(cache, handlers.handler)
+        return new Proxy(cache, handlers.handler)
     }
 
     value = function(ob={})
