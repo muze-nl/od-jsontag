@@ -28,7 +28,7 @@ export default function serialize(value, options={}) {
 		}
 	}
 
-	function stringifyValue(value, inarray=false) {
+	function stringifyValue(value, inarray=false, current) {
 		let prop
 		let typeString = odJSONTag.getTypeString(value)
 		let type = odJSONTag.getType(value)
@@ -80,7 +80,7 @@ export default function serialize(value, options={}) {
 				prop = typeString + value
 			break
 			case 'array': 
-				let entries = value.map(e => stringifyValue(e, true)).join(',')
+				let entries = value.map(e => stringifyValue(e, true, current)).join(',')
 				prop = typeString + '[' + entries + ']'
 			break
 			case 'object':
@@ -127,7 +127,7 @@ export default function serialize(value, options={}) {
 		let props = []
 		for (let key of Object.getOwnPropertyNames(object)) {
 			let value = object[key]
-			let prop = stringifyValue(value)
+			let prop = stringifyValue(value, false, current)
 			let enumerable = object.propertyIsEnumerable(key) ? '' : '#'
 			props.push(enumerable+'"'+key+'":'+prop)
 		}
