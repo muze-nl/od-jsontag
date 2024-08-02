@@ -19,6 +19,15 @@ export default function serialize(value, options={}) {
 	let resultArray = []
 	let references = new WeakMap()
 
+	if (options.meta) {
+		if (!options.meta.index) {
+			options.meta.index = {}
+		}
+		if (!options.meta.index.id) {
+			options.meta.index.id = new Map()
+		}
+	}
+
 	function stringifyValue(value, inarray=false) {
 		let prop
 		let typeString = odJSONTag.getTypeString(value)
@@ -160,9 +169,21 @@ export default function serialize(value, options={}) {
 				currentResult++
 			}
 			result[currentResult] = encoder.encode(innerStringify(currentSource))
+			if (options.meta?.index?.id) {
+				const id=odJSONTag.getAttribute(resultArray[currentSource],'id')
+				if (id) {
+					options.meta.index.id.set(id, currentSource)
+				}
+			}
 			currentResult++
 		} else if (!options.changes) {
 			resultArray[currentResult] = resultArray[currentSource][getBuffer](currentSource)
+			if (options.meta?.index?.id) {
+				const id=odJSONTag.getAttribute(resultArray[currentSource],'id')
+				if (id) {
+					options.meta.index.id.set(id, currentSource)
+				}
+			}
 			currentResult++
 		} else {
 			skipCount++

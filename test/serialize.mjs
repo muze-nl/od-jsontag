@@ -194,19 +194,20 @@ tap.test('changes-only-additions', t => {
 (45)<object id="2">{"name":"Bar","children":[~1]}`
 	let meta = {}
 	let data = parse(strData, meta, false)
+	
 	data.bar.push({name: 'FooBar'})
-	let result = stringify(serialize(data, {changes: true}))
+	let result = stringify(serialize(data, {meta, changes: true}))
 	parse(result, meta, false)
+
 	t.ok(!meta.resultArray[3][isChanged])
-	// problem is that resultArray[3] is a newValueProxy, it must be replaced
-	// since it is a new value, it must have a changed parent in the changeset
-	// if we replace the resultArray line for a newValueProxy, and reset all other
-	// objects in the changeset (happens anyway)
-	// it should link up the newly parsed value instead of the newValueProxy
-	data.bar.push({name: 'Fooz'})
-	let result2 = stringify(serialize(data, {changes: true}))
+	let fooz = {name: 'Fooz'}
+	JSONTag.setAttribute(fooz, 'id', 'fooz')
+	data.bar.push(fooz)
+	let result2 = stringify(serialize(data, {meta, changes: true}))
+	
 	t.same(result2, `(29){"foo":[~1],"bar":[~2,~3,~4]}
 +3
-(15){"name":"Fooz"}`)
+(33)<object id="fooz">{"name":"Fooz"}`)
+	t.same(meta.index.id.get('fooz'), 4)
 	t.end()
 })

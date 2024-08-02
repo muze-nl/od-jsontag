@@ -740,7 +740,7 @@ export default function parse(input, meta, immutable=true)
                             if (i != index) {
                                 return encoder.encode('~'+index)
                             }
-                            return serialize(target, meta, true, i)
+                            return serialize(target, {meta, skipLength:true})
                         }
                     break
                     case getIndex:
@@ -858,7 +858,7 @@ export default function parse(input, meta, immutable=true)
                                 return encoder.encode('~'+index)
                             }
                             if (target[isChanged]) {
-                                return serialize(target, null, true)
+                                return serialize(target, {skipLength: true})
                             }
                             return target[position].input.slice(target[position].start,target[position].end)
                         }
