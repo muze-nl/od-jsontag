@@ -157,10 +157,7 @@ export default function serialize(value, options={}) {
 	let currentSource = 0
 	let currentResult = 0
 	let skipCount = 0
-	let result = resultArray
-	if (options.changes) {
-		result = []
-	}
+	let result = []
 	while(currentSource<resultArray.length) {
 		if (resultArray[currentSource][isChanged] || !resultArray[currentSource][isProxy]) {
 			if (skipCount) {
@@ -177,7 +174,7 @@ export default function serialize(value, options={}) {
 			}
 			currentResult++
 		} else if (!options.changes) {
-			resultArray[currentResult] = resultArray[currentSource][getBuffer](currentSource)
+			result[currentResult] = resultArray[currentSource][getBuffer](currentSource)
 			if (options.meta) {
 				const id=odJSONTag.getAttribute(resultArray[currentSource],'id')
 				if (id) {

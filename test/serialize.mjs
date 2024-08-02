@@ -1,6 +1,7 @@
 import JSONTag from '@muze-nl/jsontag'
+import * as odJSONTag from '../src/jsontag.mjs'
 import serialize, {stringify} from '../src/serialize.mjs'
-import {isChanged, getBuffer, getIndex} from '../src/symbols.mjs'
+import {source, isChanged, getBuffer, getIndex} from '../src/symbols.mjs'
 import parse from '../src/parse.mjs'
 import tap from 'tap'
 
@@ -34,6 +35,17 @@ tap.test('Links', t => {
 	t.end()
 })
 
+tap.test('identity', t => {
+	let strData = `(23){"foo":[~1],"bar":[~2]}
+(64)<object class="foo" id="1">{"name":"Foo",#"nonEnumerable":"bar"}
+(57)<object class="bar" id="2">{"name":"Bar","children":[~1]}`
+	let root = parse(strData);
+	t.equal(odJSONTag.getAttribute(root.foo[0], 'id'), '1')
+	let meta = {}
+	let sab = serialize(root, {meta})
+	t.equal(meta.index.id.get('1'),1)
+	t.end()
+})
 
 tap.test('update', async t => {
 	let strData = `(23){"foo":[~1],"bar":[~2]}
