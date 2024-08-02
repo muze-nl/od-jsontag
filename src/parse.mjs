@@ -1,7 +1,7 @@
 import JSONTag from '@muze-nl/jsontag';
 import Null from '@muze-nl/jsontag/src/lib/Null.mjs'
 import serialize from './serialize.mjs'
-import {source,isProxy,getBuffer,getIndex,isChanged,isParsed,position,parent,resultSet} from './symbols.mjs'
+import {source,isProxy,proxyType,getBuffer,getIndex,isChanged,isParsed,position,parent,resultSet} from './symbols.mjs'
 
 const decoder = new TextDecoder()
 const encoder = new TextEncoder()
@@ -731,6 +731,9 @@ export default function parse(input, meta, immutable=true)
                     case isProxy:
                         return true
                     break
+                    case proxyType:
+                        return 'new'
+                    break
                     case getBuffer:
                         return (i) => {
                             let index = target[getIndex]
@@ -845,6 +848,9 @@ export default function parse(input, meta, immutable=true)
                     case isProxy:
                         return true
                     break
+                    case proxyType:
+                        return 'parse'
+                    break
                     case getBuffer:
                         return (i) => {
                             let index = target[getIndex]
@@ -887,6 +893,7 @@ export default function parse(input, meta, immutable=true)
                         resetObject(target)
                         target[position] = value[position]
                         target[isParsed] = false
+                        target[isChanged] = false
                         return true
                         break
                     case resultSet:
@@ -1084,7 +1091,7 @@ export default function parse(input, meta, immutable=true)
         offsetArray.push(at)
         line = result[2]
         if (result[1]) {
-            if (!meta.resultArray[line]) {
+            if (!meta.resultArray[line] || meta.resultArray[line][proxyType]=='new') {
                 meta.resultArray[line] = result[1]
             } else {
                 meta.resultArray[line][source] = result[1]

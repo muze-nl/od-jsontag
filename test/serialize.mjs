@@ -171,3 +171,42 @@ tap.test('changes-only', t => {
 (45)<object id="2">{"name":"Baz","children":[~1]}`)
 	t.end()
 })
+
+tap.test('changes-only-update', t => {
+	let strData = `(23){"foo":[~1],"bar":[~2]}
+(45)<object id="1">{"name":"Foo","children":[~2]}
+(45)<object id="2">{"name":"Bar","children":[~1]}`
+	let meta = {}
+	let data = parse(strData, meta, false)
+	data.bar[0].name = 'Baz'
+	let result = stringify(serialize(data, {changes: true}))
+	parse(result, meta, false)
+	data.foo[0].name = 'Fooz'
+	let result2 = stringify(serialize(data, {changes: true}))
+	t.same(result2, `+1
+(46)<object id="1">{"name":"Fooz","children":[~2]}`)
+	t.end()
+})
+
+tap.test('changes-only-additions', t => {
+	let strData = `(23){"foo":[~1],"bar":[~2]}
+(45)<object id="1">{"name":"Foo","children":[~2]}
+(45)<object id="2">{"name":"Bar","children":[~1]}`
+	let meta = {}
+	let data = parse(strData, meta, false)
+	data.bar.push({name: 'FooBar'})
+	let result = stringify(serialize(data, {changes: true}))
+	parse(result, meta, false)
+	t.ok(!meta.resultArray[3][isChanged])
+	// problem is that resultArray[3] is a newValueProxy, it must be replaced
+	// since it is a new value, it must have a changed parent in the changeset
+	// if we replace the resultArray line for a newValueProxy, and reset all other
+	// objects in the changeset (happens anyway)
+	// it should link up the newly parsed value instead of the newValueProxy
+	data.bar.push({name: 'Fooz'})
+	let result2 = stringify(serialize(data, {changes: true}))
+	t.same(result2, `(29){"foo":[~1],"bar":[~2,~3,~4]}
++3
+(15){"name":"Fooz"}`)
+	t.end()
+})
