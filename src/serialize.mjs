@@ -16,7 +16,7 @@ function stringToSAB(strData) {
 }
 
 export default function serialize(value, options={}) {
-	let resultArray = []
+	let resultArray = false
 	let references = new WeakMap()
 
 	if (options.meta) {
@@ -26,6 +26,15 @@ export default function serialize(value, options={}) {
 		if (!options.meta.index.id) {
 			options.meta.index.id = new Map()
 		}
+		if (options.meta.resultArray) {
+			resultArray = options.meta.resultArray
+		}
+	}
+	if (!resultArray) {
+		resultArray = value[resultSet]
+	}
+	if (!resultArray) {
+		resultArray = []
 	}
 
 	function stringifyValue(value, inarray=false, current) {
@@ -149,9 +158,7 @@ export default function serialize(value, options={}) {
 		return u8arr
 	}
 
-	if (value[resultSet]) {
-		resultArray = value[resultSet].slice()
-	} else {
+	if (!value[resultSet]) {
 		resultArray.push(value)
 	}
 	let currentSource = 0
@@ -185,6 +192,7 @@ export default function serialize(value, options={}) {
 		} else {
 			skipCount++
 		}
+
 		currentSource++
 	}
 	let arr = result.map(encode)
