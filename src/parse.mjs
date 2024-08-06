@@ -825,17 +825,10 @@ export default function parse(input, meta, immutable=true)
         },
         handler: {
             get(target, prop, receiver) {
-                firstParse(target, receiver)
                 switch(prop) {
                     case resultSet:
                         return meta.resultArray
                     break;
-                    case source:
-                        if (meta.access && !meta.access(target, prop, 'get')) {
-                            return undefined
-                        }
-                        return target
-                    break
                     case isProxy:
                         return true
                     break
@@ -860,6 +853,15 @@ export default function parse(input, meta, immutable=true)
                     case isChanged:
                         return target[isChanged]
                     break
+                }
+                firstParse(target, receiver)
+                switch(prop) {
+                    case source:
+                        if (meta.access && !meta.access(target, prop, 'get')) {
+                            return undefined
+                        }
+                        return target
+                    break
                     default:
                         if (meta.access && !meta.access(target, prop, 'get')) {
                             return undefined
@@ -876,7 +878,6 @@ export default function parse(input, meta, immutable=true)
                 if (immutable && prop!==resultSet && prop!==source) {
                     throw new Error('dataspace is immutable')
                 }
-                firstParse(target, receiver)
                 switch(prop) {
                     case isChanged:
                         break
@@ -889,17 +890,15 @@ export default function parse(input, meta, immutable=true)
                         break
                     case resultSet:
                         break
-                    default:
-                        if (meta.access && !meta.access(target, prop, 'set')) {
-                            return undefined
-                        }
-                        if (JSONTag.getType(value)==='object' && !value[isProxy]) {
-                            value = getNewValueProxy(value)
-                        }
-                        target[prop] = value
-           
-                        break
                 }
+                firstParse(target, receiver)
+                if (meta.access && !meta.access(target, prop, 'set')) {
+                    return undefined
+                }
+                if (JSONTag.getType(value)==='object' && !value[isProxy]) {
+                    value = getNewValueProxy(value)
+                }
+                target[prop] = value
                 target[isChanged] = true
                 return true
             },
