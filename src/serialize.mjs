@@ -6,6 +6,7 @@ import * as odJSONTag from './jsontag.mjs'
 // 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
+const realJSON = JSON // in case someone redefines JSON as JSONTag later
 
 function stringToSAB(strData) {
     const buffer = encoder.encode(strData)
@@ -61,7 +62,7 @@ export default function serialize(value, options={}) {
 				if (odJSONTag.isNull(value)) {
 					value = 'null'
 				} else {
-					value = JSON.stringify(''+value)
+					value = realJSON.stringify(''+value)
 				}
 				prop = typeString + value
 			break
@@ -84,7 +85,7 @@ export default function serialize(value, options={}) {
 				if (odJSONTag.isNull(value)) {
 					value = 'null'
 				} else {
-					value = JSON.stringify(value)
+					value = realJSON.stringify(value)
 				}
 				prop = typeString + value
 			break
@@ -138,7 +139,7 @@ export default function serialize(value, options={}) {
 			let value = object[key]
 			let prop = stringifyValue(value, false, current)
 			let enumerable = object.propertyIsEnumerable(key) ? '' : '#'
-			props.push(enumerable+'"'+key+'":'+prop)
+			props.push(enumerable+realJSON.stringify(key)+':'+prop) //FIXME: how does key get escaped?
 		}
 		result = odJSONTag.getTypeString(object)+'{'+props.join(',')+'}'
 		return result

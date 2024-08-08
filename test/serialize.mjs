@@ -223,3 +223,18 @@ tap.test('changes-only-additions', t => {
 	t.same(meta.index.id.get('fooz'), 4)
 	t.end()
 })
+
+tap.test('stringify keys', t => {
+	const ob = {
+		"\\": 'slash',
+		"\n": 'enter',
+		"\"": 'quote',
+		"\t": 'tab',
+		"€": 'unicode'
+	}
+	const result = stringify(serialize(ob))
+	const expect = "(67){\"\\\\\":\"slash\",\"\\n\":\"enter\",\"\\\"\":\"quote\",\"\\t\":\"tab\",\"€\":\"unicode\"}"
+	console.log(result)
+	t.same(result, expect)
+	t.end()
+})
