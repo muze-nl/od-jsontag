@@ -167,7 +167,11 @@ export default function serialize(value, options={}) {
 	let skipCount = 0
 	let result = []
 	while(currentSource<resultArray.length) {
-		if (resultArray[currentSource][isChanged] || !resultArray[currentSource][isProxy]) {
+		if (!resultArray[currentSource]) {
+			//FIXME: should not happen, this means that there is no complete
+			//od-jsontag file, only patches?
+			skipCount++
+		} else if (resultArray[currentSource][isChanged] || !resultArray[currentSource][isProxy]) {
 			if (skipCount) {
 				result[currentResult] = encoder.encode('+'+skipCount)
 				skipCount = 0
