@@ -1,5 +1,5 @@
 import JSONTag from '@muze-nl/jsontag'
-import {source} from './symbols.mjs'
+import {source, isChanged} from './symbols.mjs'
 
 export function getType(obj) {
     return JSONTag.getType(obj?.[source] ?? obj)
@@ -26,22 +26,36 @@ export function isNull(obj) {
 }
 
 export function setAttribute(obj, attr, value) {
+    if (obj?.[source]) {
+        obj[isChanged] = true
+    }
     return JSONTag.setAttribute(obj?.[source] ?? obj, attr, value)
 }
 
 export function setAttributes(obj, attr) {
+    if (obj?.[source]) {
+        obj[isChanged] = true
+    }
     return JSONTag.setAttribute(obj?.[source] ?? obj, attr)
 }
 
 export function setType(obj, type) {
+    if (obj?.[source]) {
+        obj[isChanged] = true
+    }
     return JSONTag.setType(obj?.[source] ?? obj, type)
 }
 
 export function addAttribute(obj, attr, value) {
+    if (obj?.[source]) {
+        obj[isChanged] = true
+    }
     return JSONTag.addAttribute(obj?.[source] ?? obj, attr, value)
 }
 
 export function removeAttribute(obj, attr) {
+    if (obj?.[source]) {
+        obj[isChanged] = true
+    }
     return JSONTag.removeAttribute(obj?.[source] ?? obj, attr)
 }
-
