@@ -32,7 +32,7 @@ export default function serialize(value, options={}) {
 		}
 	}
 	if (!resultArray) {
-		resultArray = value[resultSet]
+		resultArray = value?.[resultSet]
 	}
 	if (!resultArray) {
 		resultArray = []
@@ -159,7 +159,7 @@ export default function serialize(value, options={}) {
 		return u8arr
 	}
 
-	if (!value[resultSet]) {
+	if (!value?.[resultSet]) {
 		resultArray.push(value)
 	}
 	let currentSource = 0
@@ -205,7 +205,9 @@ export default function serialize(value, options={}) {
 	for (let line of arr) {
 		length += line.length+1
 	}
-	length -= 1 // skip last newline
+	if (length) {
+		length -= 1 // skip last newline
+	}
 	let sab = new SharedArrayBuffer(length)
 	let u8arr = new Uint8Array(sab)
 	let offset = 0
