@@ -1,7 +1,7 @@
 import JSONTag from '@muze-nl/jsontag'
 import * as odJSONTag from '../src/jsontag.mjs'
 import serialize, {stringify} from '../src/serialize.mjs'
-import {source, isChanged, getBuffer, getIndex} from '../src/symbols.mjs'
+import {source, isChanged, getBuffer, getIndex, isProxy} from '../src/symbols.mjs'
 import parse from '../src/parse.mjs'
 import tap from 'tap'
 
@@ -73,7 +73,6 @@ tap.test('append', t => {
 (64)<object class="foo" id="1">{"name":"Foo",#"nonEnumerable":"bar"}
 (57)<object class="bar" id="2">{"name":"Bar","children":[~1]}
 (30){"name":"Baz","children":[~1]}`
-	
 	let root = parse(strData, {}, false)
 	root.foo.push({
 		name: 'Baz',
@@ -81,12 +80,13 @@ tap.test('append', t => {
 			root.foo[0]
 		]
 	})
-	strData = stringify(serialize(root))
+	//globalThis.meer = true
+	let sab = serialize(root) // infinite loop...
+	strData = stringify(sab)
 	t.equal(strData, expect)
 	t.end()
 
 })
-
 
 tap.test('appendChild', t => {
 	let strData = `(23){"foo":[~1],"bar":[~2]}
@@ -236,5 +236,42 @@ tap.test('stringify keys', t => {
 	const expect = "(67){\"\\\\\":\"slash\",\"\\n\":\"enter\",\"\\\"\":\"quote\",\"\\t\":\"tab\",\"€\":\"unicode\"}"
 	console.log(result)
 	t.same(result, expect)
+	t.end()
+})
+
+tap.test('undefined', t => {
+	const ob = {}
+	const result = stringify(serialize(ob.foo))
+	const expect = ''
+	t.same(result, expect)
+	t.end()
+})
+
+tap.test('<undefined>', t => {
+	const ob = {
+		Doelniveau: [
+			{
+				name: 'test entity'
+			}
+		]
+	}
+	const buff = serialize(ob)
+	let meta = {}
+	const data = parse(buff, meta, false)
+
+	odJSONTag.setAttribute(data.Doelniveau[0], 'foo', 'bar')
+	t.same(data.Doelniveau[0][isChanged], true)
+	let s = stringify(serialize(data))
+	t.same(s, `(19){"Doelniveau":[~1]}
+(40)<object foo="bar">{"name":"test entity"}`)
+
+	odJSONTag.setAttribute(data.Doelniveau, 'foo', 'bar')
+	t.equal(data, meta.resultArray[data[getIndex]])
+	t.equal(data[isProxy], true)
+	t.same(data[isChanged], true)
+	t.same(data.Doelniveau[isChanged], true)
+	s = stringify(serialize(data))
+	t.same(s, `(36){"Doelniveau":<array foo="bar">[~1]}
+(40)<object foo="bar">{"name":"test entity"}`)
 	t.end()
 })
