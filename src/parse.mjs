@@ -5,6 +5,7 @@ import {source,isProxy,proxyType,getBuffer,getIndex,isChanged,isParsed,position,
 
 const decoder = new TextDecoder()
 const encoder = new TextEncoder()
+const arrayProxies = new WeakMap()
 
 function stringToSAB(strData) {
     const buffer = encoder.encode(strData)
@@ -674,6 +675,18 @@ export default function parse(input, meta, immutable=true)
         })
     }
 
+    const getArrayProxy = (arr, par, handler) => {
+        if (!handler) {
+            handler = handlers.arrayHandler
+        }
+        if (!arrayProxies.has(arr)) {
+            arrayProxies.set(arr, new Proxy(arr, handler))
+        }
+        let aProxy = arrayProxies.get(arr)
+        aProxy[parent] = par
+        return aProxy
+    }
+
     const handlers = {
         newArrayHandler: {
             get(target, prop) {
@@ -694,12 +707,17 @@ export default function parse(input, meta, immutable=true)
                         return undefined
                     }
                     if (Array.isArray(target[prop])) {
-                        return new Proxy(target[prop], handlers.newArrayHandler)
+                        return getArrayProxy(target[prop], target, handlers.newArrayHandler)
                     }
                     return target[prop]
                 }
             },
             set(target, prop, value) {
+                if (prop === isChanged || prop === parent) {
+                    // prevent infinite loops, parent is only needed to mark it isChanged
+                    // but this is a new array proxy, parent is already dirty
+                    return true
+                }
                 if (meta.access && !meta.access(target, prop)) {
                     return undefined
                 }
@@ -745,7 +763,7 @@ export default function parse(input, meta, immutable=true)
                             return undefined
                         }
                         if (Array.isArray(target[prop])) {
-                            return new Proxy(target[prop], handlers.newArrayHandler)
+                            return getArrayProxy(target[prop], target, handlers.newArrayHandler)
                         }
                         return target[prop]
                     break
@@ -782,19 +800,24 @@ export default function parse(input, meta, immutable=true)
                         return result
                     }
                 } else if (prop===isChanged) {
-                    return target[parent][isChanged]
+                    return target[isChanged] || target[parent][isChanged]
+                } else if (prop===source) {
+                    return target
                 } else {
                     if (meta.access && !meta.access(target, prop, 'get')) {
                         return undefined
                     }
                     if (Array.isArray(target[prop])) {
-                        target[prop][parent] = target[parent]
-                        return new Proxy(target[prop], handlers.arrayHandler)
+                        return getArrayProxy(target[prop], target)
                     }
                     return target[prop]
                 }
             },
             set(target, prop, value) {
+                if (prop == parent) {
+                    target[parent] = value
+                    return true
+                }
                 if (immutable) {
                     throw new Error('dataspace is immutable')
                 }
@@ -805,6 +828,7 @@ export default function parse(input, meta, immutable=true)
                     value = getNewValueProxy(value)
                 } 
                 target[prop] = value
+                target[isChanged] = true
                 target[parent][isChanged] = true
                 return true
             },
@@ -819,6 +843,7 @@ export default function parse(input, meta, immutable=true)
                 //that object should be deleted so that its line will become empty
                 //when stringifying resultArray again
                 delete target[prop]
+                target[isChanged] = true
                 target[parent][isChanged] = true
                 return true
             }
@@ -867,15 +892,14 @@ export default function parse(input, meta, immutable=true)
                             return undefined
                         }
                         if (Array.isArray(target[prop])) {
-                            target[prop][parent] = target
-                            return new Proxy(target[prop], handlers.arrayHandler)
+                            return getArrayProxy(target[prop], target)
                         }
                         return target[prop]
                     break
                 }
             },
             set(target, prop, value, receiver) {
-                if (immutable && prop!==resultSet && prop!==source) {
+                if (immutable && prop!==resultSet && prop!==source && prop!==isChanged) {
                     throw new Error('dataspace is immutable')
                 }
                 switch(prop) {
