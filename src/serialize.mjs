@@ -90,7 +90,29 @@ export default function serialize(value, options={}) {
 				prop = typeString + value
 			break
 			case 'array': 
-				let entries = value.map(e => stringifyValue(e, true, current)).join(',')
+				let entries = value.map(e => stringifyValue(e, true, current))
+				let mergedEntries = []
+				let previousIndex = null
+				let startSlice = null
+				entries.forEach(e => {
+					if (e[0]=='~') {
+						let currIndex = parseInt(e.substr(1))
+						if (startSlice && currIndex === (previousIndex + 1)) {
+							mergedEntries.pop()
+							mergedEntries.push('~' + startSlice + '-' + currIndex)
+							previousIndex = currIndex
+						} else {
+							mergedEntries.push(e)
+							previousIndex = currIndex
+							startSlice = currIndex
+						}
+					} else {
+						mergedEntries.push(e)
+						previousIndex = null
+						startSlice = null
+					}
+				})
+				entries = mergedEntries.join(',')
 				prop = typeString + '[' + entries + ']'
 			break
 			case 'object':

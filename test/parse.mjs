@@ -1,6 +1,7 @@
 import JSONTag from '@muze-nl/jsontag'
 import {isChanged, source, getBuffer, getIndex} from '../src/symbols.mjs'
 import parse from '../src/parse.mjs'
+import serialize from '../src/serialize.mjs'
 import tap from 'tap'
 
 const encoder = new TextEncoder()
@@ -22,6 +23,17 @@ tap.test('Parse', t => {
 	t.equal(root.foo[0].name, 'Foo')
 	t.equal(root.foo[0], root.bar[0].children[0])
 	t.equal(JSONTag.getAttribute(root.foo[0], 'class'), 'foo')
+	t.end()
+})
+
+tap.test('ParseLargeArrays', t => {
+	let s = `(25){"foo":[~1-3],"bar":[~2]}
+(64)<object class="foo" id="1">{"name":"Foo",#"nonEnumerable":"bar"}
+(57)<object class="bar" id="2">{"name":"Bar","children":[~1]}
+(57)<object class="baz" id="3">{"name":"Baz","children":[~1]}
+`
+	let root = parse(s)
+	t.equal(root.foo.length, 3)
 	t.end()
 })
 
@@ -109,5 +121,38 @@ tap.test('merge', t => {
 	t.equal(root2.foo[0], root.foo[0])
 	t.equal(root.foo[0].name, 'Baz')
 	t.equal(meta.resultArray[1].name, 'Baz')
+	t.end()
+})
+
+tap.test('defineProperty', t => {
+	let data = {
+		examenprogrammaDomein: [
+			{
+				title: "Een domein"
+			}
+		],
+		examenprogrammaEindterm: [
+			{
+				title: "Een eindterm"
+			}
+		]
+	}
+	data.examenprogrammaDomein.examenprogrammaEindterm = [
+		data.examenprogrammaEindterm[0]
+	]
+	let strData = serialize(data)
+	let parsed = parse(strData, {}, false) //mutable
+	Object.defineProperty(parsed.examenprogrammaEindterm[0], 
+		'examenprogrammaDomein', {
+			value: [],
+			enumerable: false,
+			writable: true,
+			configurable: true
+		}
+	);
+	parsed.examenprogrammaEindterm[0].examenprogrammaDomein
+	.push(parsed.examenprogrammaDomein[0])
+	t.equal(parsed.examenprogrammaEindterm[0].examenprogrammaDomein[0], 
+			parsed.examenprogrammaDomein[0])
 	t.end()
 })

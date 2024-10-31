@@ -15,6 +15,25 @@ function stringToSAB(strData) {
     return uint8sab
 }
 
+function SABtoString(arr) {
+    let string = '';
+    for (let c of arr) {
+        string+= String.fromCharCode(c)
+    }
+    return string
+}
+
+class Slice {
+    constructor(start, end) {
+        this.start = start;
+        this.end = end;
+    }
+}
+
+const isSlice = function(r) {
+    return r instanceof Slice
+}
+
 export default function parse(input, meta, immutable=true)
 {
     if (!meta) {
@@ -69,7 +88,8 @@ export default function parse(input, meta, immutable=true)
     let next = function(c)
     {
         if (c && c!==ch) {
-            error("Expected '"+c+"' instead of '"+ch+"': "+at+':'+input)
+            let source = SABtoString(input)
+            error("Expected '"+c+"' instead of '"+ch+"': "+at+':'+source)
         }
         ch = String.fromCharCode(input.at(at))
         at+=1
@@ -566,7 +586,11 @@ export default function parse(input, meta, immutable=true)
         while(ch) {
             item = value()
             checkUnresolved(item, array, array.length)
-            array.push(item)
+            if (isSlice(item)) {
+                array = array.concat(meta.resultArray.slice(item.start, item.end))
+            } else {
+                array.push(item)
+            }
             whitespace()
             if (ch===']') {
                 next(']')
@@ -650,6 +674,15 @@ export default function parse(input, meta, immutable=true)
         while(ch>='0' && ch<='9') {
             numString += ch
             next()
+        }
+        if (ch=='-') {
+            next('-')
+            let endString = ''
+            while(ch>='0' && ch<='9') {
+                endString += ch
+                next()
+            }
+            return new Slice(parseInt(numString),parseInt(endString)+1) // +1 because array.slice(start,end) slices upto but not including end
         }
         return parseInt(numString)
     }
@@ -954,7 +987,7 @@ export default function parse(input, meta, immutable=true)
                     return undefined
                 }
                 firstParse(target)
-                Object.defineProperty(target, prop, descriptor)
+                return Object.defineProperty(target, prop, descriptor)
             },
             has(target, prop) {
                 if (meta.access && !meta.access(target, prop, 'has')) {
@@ -1027,6 +1060,9 @@ export default function parse(input, meta, immutable=true)
         whitespace()
         if (ch==='~') {
             let vOffset = offset()
+            if (isSlice(vOffset)) {
+                return vOffset
+            }
             return meta.resultArray[vOffset]
         }
         if (ch==='<') {

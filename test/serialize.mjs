@@ -216,8 +216,7 @@ tap.test('changes-only-additions', t => {
 	JSONTag.setAttribute(fooz, 'id', 'fooz')
 	data.bar.push(fooz)
 	let result2 = stringify(serialize(data, {meta, changes: true}))
-	
-	t.same(result2, `(29){"foo":[~1],"bar":[~2,~3,~4]}
+	t.same(result2, `(25){"foo":[~1],"bar":[~2-4]}
 +3
 (33)<object id="fooz">{"name":"Fooz"}`)
 	t.same(meta.index.id.get('fooz'), 4)
