@@ -698,7 +698,7 @@ export default function parse(input, meta, immutable=true)
         Object.entries(parent).forEach(([key,entry]) => {
             if (Array.isArray(entry)) {
                 makeChildProxies(entry)
-            } else if (JSONTag.getType(entry)==='object') {
+            } else if (entry && JSONTag.getType(entry)==='object') {
                 if (entry[isProxy]) {
                     // do nothing
                 } else {
@@ -952,7 +952,7 @@ export default function parse(input, meta, immutable=true)
                 if (meta.access && !meta.access(target, prop, 'set')) {
                     return undefined
                 }
-                if (JSONTag.getType(value)==='object' && !value[isProxy]) {
+                if (value && JSONTag.getType(value)==='object' && !value[isProxy]) {
                     value = getNewValueProxy(value)
                 }
                 target[prop] = value
@@ -1026,6 +1026,9 @@ export default function parse(input, meta, immutable=true)
     }
 
     const getNewValueProxy = function(value) {
+        if (value === null) {
+            return null
+        }
         let index = meta.resultArray.length
         meta.resultArray.push('')
         value[getIndex] = index

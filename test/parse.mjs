@@ -156,3 +156,17 @@ tap.test('defineProperty', t => {
 			parsed.examenprogrammaDomein[0])
 	t.end()
 })
+
+tap.test('parseNull', t => {
+	let data = {
+		foo: null
+	}
+	let s = serialize(data)
+	let d = parse(s, {}, false)
+	t.same(d.foo, data.foo)
+	d.bar = null
+	let s2 = serialize(d)
+	let d2 = parse(s2)
+	t.same(d2.foo, data.foo)	
+	t.end()
+})
