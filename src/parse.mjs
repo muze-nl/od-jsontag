@@ -814,13 +814,14 @@ export default function parse(input, meta, immutable=true)
             }
         },
         arrayHandler: {
-            get(target, prop) {
-                if (target[prop] instanceof Function) {
-                    if (['copyWithin','fill','pop','push','reverse','shift','sort','splice','unshift'].indexOf(prop)!==-1) {
-                        if (immutable) {
-                            throw new Error('dataspace is immutable')
-                        }
-                    }
+            get(target, prop, receiver) {
+                const value = target?.[prop]
+                if (value instanceof Function) {
+                    // if (['copyWithin','fill','pop','push','reverse','shift','sort','splice','unshift'].indexOf(prop)!==-1) {
+                    //     if (immutable) {
+                    //         throw new Error('dataspace is immutable')
+                    //     }
+                    // }
                     return (...args) => {
                         args = args.map(arg => {
                             if (JSONTag.getType(arg)==='object' && !arg[isProxy]) {
@@ -828,9 +829,7 @@ export default function parse(input, meta, immutable=true)
                             }
                             return arg
                         })
-                        target[parent][isChanged] = true // incorrect target for isChanged...
-                        let result = target[prop].apply(target, args)
-                        return result
+                        return value.apply(receiver, args)
                     }
                 } else if (prop===isChanged) {
                     return target[isChanged] || target[parent][isChanged]
@@ -840,10 +839,10 @@ export default function parse(input, meta, immutable=true)
                     if (meta.access && !meta.access(target, prop, 'get')) {
                         return undefined
                     }
-                    if (Array.isArray(target[prop])) {
-                        return getArrayProxy(target[prop], target)
+                    if (Array.isArray(value)) {
+                        return getArrayProxy(value, target)
                     }
-                    return target[prop]
+                    return value
                 }
             },
             set(target, prop, value) {
@@ -859,6 +858,9 @@ export default function parse(input, meta, immutable=true)
                 }
                 if (JSONTag.getType(value)==='object' && !value[isProxy]) {
                     value = getNewValueProxy(value)
+                }
+                if (target[prop] === value) {
+                    return true
                 } 
                 target[prop] = value
                 target[isChanged] = true
@@ -875,6 +877,9 @@ export default function parse(input, meta, immutable=true)
                 //FIXME: if target[prop] was the last reference to an object
                 //that object should be deleted so that its line will become empty
                 //when stringifying resultArray again
+                if (typeof target[prop] === 'undefined') {
+                    return true
+                }
                 delete target[prop]
                 target[isChanged] = true
                 target[parent][isChanged] = true
@@ -955,6 +960,9 @@ export default function parse(input, meta, immutable=true)
                 if (value && JSONTag.getType(value)==='object' && !value[isProxy]) {
                     value = getNewValueProxy(value)
                 }
+                if (target[prop] === value) {
+                    return true
+                }
                 target[prop] = value
                 target[isChanged] = true
                 return true
@@ -967,6 +975,9 @@ export default function parse(input, meta, immutable=true)
                     return undefined
                 }
                 firstParse(target)
+                if (typeof target[prop] === 'undefined') {
+                    return true
+                }
                 delete target[prop]
                 target[isChanged] = true
                 return true
@@ -987,6 +998,7 @@ export default function parse(input, meta, immutable=true)
                     return undefined
                 }
                 firstParse(target)
+                target[isChanged] = true
                 return Object.defineProperty(target, prop, descriptor)
             },
             has(target, prop) {
