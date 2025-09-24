@@ -1,7 +1,7 @@
 import JSONTag from '@muze-nl/jsontag'
 import {isChanged, source, getBuffer, getIndex} from '../src/symbols.mjs'
 import parse from '../src/parse.mjs'
-import serialize from '../src/serialize.mjs'
+import serialize, {stringify} from '../src/serialize.mjs'
 import tap from 'tap'
 
 const encoder = new TextEncoder()
@@ -169,4 +169,21 @@ tap.test('parseNull', t => {
 	let d2 = parse(s2)
 	t.same(d2.foo, data.foo)	
 	t.end()
+})
+
+tap.test('regression check', t => {
+	const dataStr = `{
+    "foo":[
+        <object id="bar">{
+            "bar":"baz"
+        }
+    ]
+}`
+	const data = JSONTag.parse(dataStr)
+	const odDataBuf = serialize(data)
+	const odData = parse(odDataBuf)
+
+	let foo = odData
+    t.same(JSONTag.stringify(foo, null, 4), dataStr)
+    t.end()
 })

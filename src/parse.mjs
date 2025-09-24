@@ -1,7 +1,7 @@
 import JSONTag from '@muze-nl/jsontag';
 import Null from '@muze-nl/jsontag/src/lib/Null.mjs'
 import serialize from './serialize.mjs'
-import {source,isProxy,proxyType,getBuffer,getIndex,isChanged,isParsed,position,parent,resultSet} from './symbols.mjs'
+import {source,isProxy,proxyType,getBuffer,getIndex,isChanged,isParsed,isReceived,position,parent,resultSet} from './symbols.mjs'
 
 const decoder = new TextDecoder()
 const encoder = new TextEncoder()
@@ -1018,16 +1018,19 @@ export default function parse(input, meta, immutable=true)
         if (!target[isParsed]) {
             parseValue(target[position], target)
             target[isParsed] = true
-            if (receiver) {
-                let tag = JSONTag.getType(target)
-                if (tag) {
-                    JSONTag.setType(receiver, tag)
-                }
-                let attributes = JSONTag.getAttributes(target)
-                if (attributes) {
-                    JSONTag.setAttributes(receiver, attributes)
-                }
+        }
+        if (receiver && !target[isReceived]) {
+            //FIXME: this breaks on a Proxy without receiver param
+            //e.g. odJSONTag and a call to ownKeys triggering the first parse
+            let tag = JSONTag.getType(target)
+            if (tag) {
+                JSONTag.setType(receiver, tag)
             }
+            let attributes = JSONTag.getAttributes(target)
+            if (attributes) {
+                JSONTag.setAttributes(receiver, attributes)
+            }
+            target[isReceived] = true
         }
     }
 
