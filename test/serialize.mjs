@@ -47,6 +47,19 @@ tap.test('identity', t => {
 	t.end()
 })
 
+tap.test('access after serialize', t => {
+	let strData = `(23){"foo":[~1],"bar":[~2]}
+(64)<object class="foo" id="1">{"name":"Foo",#"nonEnumerable":"bar"}
+(57)<object class="bar" id="2">{"name":"Bar","children":[~1]}`
+	let root = parse(strData);
+	let foo = root.foo[0]
+	let meta = {}
+	let string = stringify(serialize(root, {meta}))
+	t.equal(foo, root.foo[0])
+	t.equal(foo.name, 'Foo')
+	t.end()
+})
+
 tap.test('update', async t => {
 	let strData = `(23){"foo":[~1],"bar":[~2]}
 (64)<object class="foo" id="1">{"name":"Foo",#"nonEnumerable":"bar"}
@@ -143,6 +156,7 @@ tap.test('circular', t => {
 (45)<object id="2">{"name":"Bar","children":[~1]}`
 	let data = JSONTag.parse(strData)
 	let result = stringify(serialize(data))
+	t.equal(data.foo[0].name, 'Foo')
 	t.equal(result,expect)
 	t.end()
 })
