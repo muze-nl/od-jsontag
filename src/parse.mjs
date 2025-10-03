@@ -350,7 +350,6 @@ export default class Parser extends JSONTag.Parser
         }
     }
 
-
     next(c)
     {
         if (c && c!==this.ch) {
@@ -368,7 +367,7 @@ export default class Parser extends JSONTag.Parser
         try {
             context = decoder.decode(this.input.slice(this.at,this.at+100));
         } catch(e) {
-            
+
         }
         throw {
             name: 'SyntaxError',
@@ -758,6 +757,9 @@ export default class Parser extends JSONTag.Parser
     }
 
     checkUnresolved() {
-
+        // TODO:
+        // for now assume there are no <link> objects in od-jsontag
+        // JSONTag Parser.checkUnresolved triggers firstParse, 
+        // while parsing the current object
     }
 }
