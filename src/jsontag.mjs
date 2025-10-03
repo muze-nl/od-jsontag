@@ -28,6 +28,12 @@ export function isNull(obj) {
 export function setAttribute(obj, attr, value) {
     if (obj?.[source]) {
         obj[isChanged] = true
+        // const info = globalThis.JSONTagTypeInfo.get(obj[source])
+        // if (!info) {
+        //     info = {}
+        //     globalThis.JSONTagTypeInfo.set(obj[source], info)
+        // }
+        // globalThis.JSONTagTypeInfo.set(obj, info)
     }
     return JSONTag.setAttribute(obj?.[source] ?? obj, attr, value)
 }
@@ -35,6 +41,12 @@ export function setAttribute(obj, attr, value) {
 export function setAttributes(obj, attr) {
     if (obj?.[source]) {
         obj[isChanged] = true
+        // const info = globalThis.JSONTagTypeInfo.get(obj[source])
+        // if (!info) {
+        //     info = {}
+        //     globalThis.JSONTagTypeInfo.set(obj[source], info)
+        // }
+        // globalThis.JSONTagTypeInfo.set(obj, info)
     }
     return JSONTag.setAttribute(obj?.[source] ?? obj, attr)
 }
@@ -42,6 +54,12 @@ export function setAttributes(obj, attr) {
 export function setType(obj, type) {
     if (obj?.[source]) {
         obj[isChanged] = true
+        // const info = globalThis.JSONTagTypeInfo.get(obj[source])
+        // if (!info) {
+        //     info = {}
+        //     globalThis.JSONTagTypeInfo.set(obj[source], info)
+        // }
+        // globalThis.JSONTagTypeInfo.set(obj, info)
     }
     return JSONTag.setType(obj?.[source] ?? obj, type)
 }
@@ -49,6 +67,12 @@ export function setType(obj, type) {
 export function addAttribute(obj, attr, value) {
     if (obj?.[source]) {
         obj[isChanged] = true
+        // const info = globalThis.JSONTagTypeInfo.get(obj[source])
+        // if (!info) {
+        //     info = {}
+        //     globalThis.JSONTagTypeInfo.set(obj[source], info)
+        // }
+        // globalThis.JSONTagTypeInfo.set(obj, info)
     }
     return JSONTag.addAttribute(obj?.[source] ?? obj, attr, value)
 }
@@ -56,6 +80,12 @@ export function addAttribute(obj, attr, value) {
 export function removeAttribute(obj, attr) {
     if (obj?.[source]) {
         obj[isChanged] = true
+        // const info = globalThis.JSONTagTypeInfo.get(obj[source])
+        // if (!info) {
+        //     info = {}
+        //     globalThis.JSONTagTypeInfo.set(obj[source], info)
+        // }
+        // globalThis.JSONTagTypeInfo.set(obj, info)
     }
     return JSONTag.removeAttribute(obj?.[source] ?? obj, attr)
 }

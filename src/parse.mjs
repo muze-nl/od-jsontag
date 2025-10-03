@@ -1,13 +1,13 @@
 import JSONTag from '@muze-nl/jsontag';
 import Null from '@muze-nl/jsontag/src/lib/Null.mjs'
 import serialize from './serialize.mjs'
-import {source,isProxy,proxyType,getBuffer,getIndex,isChanged,isParsed,isReceived,position,parent,resultSet} from './symbols.mjs'
+import {source,isProxy,proxyType,getBuffer,getIndex,isChanged,isParsed,position,parent,resultSet} from './symbols.mjs'
 
-const decoder = new TextDecoder()
 const encoder = new TextEncoder()
-const arrayProxies = new WeakMap()
+const decoder = new TextDecoder()
 
-function stringToSAB(strData) {
+function stringToSAB(strData)
+{
     const buffer = encoder.encode(strData)
     const sab = new SharedArrayBuffer(buffer.length)
     let uint8sab = new Uint8Array(sab)
@@ -15,7 +15,8 @@ function stringToSAB(strData) {
     return uint8sab
 }
 
-function SABtoString(arr) {
+function SABtoString(arr)
+{
     let string = '';
     for (let c of arr) {
         string+= String.fromCharCode(c)
@@ -23,612 +24,419 @@ function SABtoString(arr) {
     return string
 }
 
-class Slice {
-    constructor(start, end) {
+class Slice 
+{
+    constructor(start, end)
+    {
         this.start = start;
         this.end = end;
     }
 }
 
-const isSlice = function(r) {
+const isSlice = function(r) 
+{
     return r instanceof Slice
 }
 
-export default function parse(input, meta, immutable=true)
+const resetObject = function(ob)
 {
-    if (!meta) {
-        meta = {}
+    for (let prop of Object.getOwnPropertyNames(ob)) {
+        delete ob[prop]
     }
-    if (!meta.unresolved) {
-        meta.unresolved = new Map()
-    }
-    if (!meta.baseURL) {
-        meta.baseURL = 'http://localhost/'
-    }
-    let at, ch, value, result;
-    let escapee = {
-        '"': '"',
-        "\\":"\\",
-        '/': '/',
-        b: "\b",
-        f: "\f",
-        n: "\n",
-        r: "\r",
-        t: "\t"
-    }
-    let offsetArray = []
-    if (!meta.resultArray) {
-        meta.resultArray = []
+}
+
+export default class Parser extends JSONTag.Parser
+{    
+
+    handlers
+
+    constructor(baseURL, immutable=true)
+    {
+        super(baseURL)
+        this.cachedProxies = new Map() //FIXME: set back to WeakMap
+        this.immutable = immutable
+        this.handlers = {
+            newArrayHandler: {
+                get: (target, prop) => {
+                    if (target[prop] instanceof Function) {
+                        return (...args) => {
+                            args = args.map(arg => {
+                                if (JSONTag.getType(arg)==='object' && !arg[isProxy]) {
+                                    arg = this.getNewValueProxy(arg)
+                                }
+                                return arg
+                            })
+                            return target[prop].apply(target, args)
+                        }
+                    } else if (prop===isChanged) {
+                        return true
+                    } else {
+                        if (this.meta.access && !this.meta.access(target, prop)) {
+                            return undefined
+                        }
+                        if (Array.isArray(target[prop])) {
+                            return this.getArrayProxy(target[prop], target, this.handlers.newArrayHandler)
+                        }
+                        return target[prop]
+                    }
+                },
+                set: (target, prop, value) => {
+                    if (prop === isChanged || prop === parent) {
+                        // prevent infinite loops, parent is only needed to mark it isChanged
+                        // but this is a new array proxy, parent is already dirty
+                        return true
+                    }
+                    if (this.meta.access && !this.meta.access(target, prop)) {
+                        return undefined
+                    }
+                    if (JSONTag.getType(value)==='object' && !value[isProxy]) {
+                        value = this.getNewValueProxy(value)
+                    } 
+                    target[prop] = value
+                    return true
+                }
+            },
+            newValueHandler: {
+                get: (target, prop) => {
+                    switch(prop) {
+                        case resultSet:
+                            return this.meta.resultArray
+                        break;
+                        case source:
+                            return target
+                        break
+                        case isProxy:
+                            return true
+                        break
+                        case proxyType:
+                            return 'new'
+                        break
+                        case getBuffer:
+                            return (i) => {
+                                let index = target[getIndex]
+                                if (i != index) {
+                                    return encoder.encode('~'+index)
+                                }
+                                return serialize(target, {meta:this.meta, skipLength:true})
+                            }
+                        break
+                        case getIndex:
+                            return target[getIndex]
+                        break
+                        case isChanged:
+                            return true
+                        break
+                        default:
+                            if (this.meta.access && !this.meta.access(target, prop, 'get')) {
+                                return undefined
+                            }
+                            if (Array.isArray(target[prop])) {
+                                return this.getArrayProxy(target[prop], target, this.handlers.newArrayHandler)
+                            }
+                            return target[prop]
+                        break
+                    } 
+                },
+                set: (target, prop, value) => {
+                    if (this.meta.access && !this.meta.access(target, prop, 'set')) {
+                        return undefined
+                    }
+                    if (JSONTag.getType(value)==='object' && !value[isProxy]) {
+                        value = this.getNewValueProxy(value)
+                    }
+                    target[prop] = value
+                    return true                    
+                }
+            },
+            arrayHandler: {
+                get: (target, prop, receiver) => {
+                    const value = target?.[prop]
+                    if (value instanceof Function) {
+                        // if (['copyWithin','fill','pop','push','reverse','shift','sort','splice','unshift'].indexOf(prop)!==-1) {
+                        //     if (immutable) {
+                        //         throw new Error('dataspace is immutable')
+                        //     }
+                        // }
+                        return (...args) => {
+                            args = args.map(arg => {
+                                if (JSONTag.getType(arg)==='object' && !arg[isProxy]) {
+                                    arg = this.getNewValueProxy(arg)
+                                }
+                                return arg
+                            })
+                            return value.apply(receiver, args)
+                        }
+                    } else if (prop===isChanged) {
+                        return target[isChanged] || target[parent][isChanged]
+                    } else if (prop===source) {
+                        return target
+                    } else {
+                        if (this.meta.access && !this.meta.access(target, prop, 'get')) {
+                            return undefined
+                        }
+                        if (Array.isArray(value)) {
+                            return this.getArrayProxy(value, target)
+                        }
+                        return value
+                    }
+                },
+                set: (target, prop, value) => {
+                    if (prop == parent) {
+                        target[parent] = value
+                        return true
+                    }
+                    if (this.immutable) {
+                        throw new Error('dataspace is immutable')
+                    }
+                    if (this.meta.access && !this.meta.access(target, prop, 'set')) {
+                        return undefined
+                    }
+                    if (JSONTag.getType(value)==='object' && !value[isProxy]) {
+                        value = this.getNewValueProxy(value)
+                    }
+                    if (target[prop] === value) {
+                        return true
+                    } 
+                    target[prop] = value
+                    target[isChanged] = true
+                    target[parent][isChanged] = true
+                    return true
+                },
+                deleteProperty: (target, prop) => {
+                    if (this.immutable) {
+                        throw new Error('dataspace is immutable')
+                    }
+                    if (this.meta.access && !this.meta.access(target, prop, 'deleteProperty')) {
+                        return undefined
+                    }
+                    //FIXME: if target[prop] was the last reference to an object
+                    //that object should be deleted so that its line will become empty
+                    //when stringifying resultArray again
+                    if (typeof target[prop] === 'undefined') {
+                        return true
+                    }
+                    delete target[prop]
+                    target[isChanged] = true
+                    target[parent][isChanged] = true
+                    return true
+                }
+            },
+            defaultHandler: {
+                get: (target, prop, receiver) => {
+                    switch(prop) {
+                        case resultSet:
+                            return this.meta.resultArray
+                        break;
+                        case isProxy:
+                            return true
+                        break
+                        case proxyType:
+                            return 'parse'
+                        break
+                        case getBuffer:
+                            return (i) => {
+                                let index = target[getIndex]
+                                if (i != index) {
+                                    return encoder.encode('~'+index)
+                                }
+                                if (target[isChanged]) {
+                                    return serialize(target, {skipLength: true})
+                                }
+                                return target[position].input.slice(target[position].start,target[position].end)
+                            }
+                        break
+                        case getIndex:
+                            return target[getIndex]
+                        break
+                        case isChanged:
+                            return target[isChanged]
+                        break
+                    }
+                    this.firstParse(target, receiver)
+                    switch(prop) {
+                        case source:
+                            if (this.meta.access && !this.meta.access(target, prop, 'get')) {
+                                return undefined
+                            }
+                            return target
+                        break
+                        default:
+                            if (this.meta.access && !this.meta.access(target, prop, 'get')) {
+                                return undefined
+                            }
+                            if (Array.isArray(target[prop])) {
+                                return this.getArrayProxy(target[prop], target)
+                            }
+                            return target[prop]
+                        break
+                    }
+                },
+                set: (target, prop, value, receiver) => {
+                    if (this.immutable && prop!==resultSet && prop!==source && prop!==isChanged) {
+                        throw new Error('dataspace is immutable')
+                    }
+                    switch(prop) {
+                        case isChanged:
+                            break
+                        case source:
+                            resetObject(target)
+                            target[position] = value[position]
+                            target[isParsed] = false
+                            target[isChanged] = false
+                            return true
+                            break
+                        case resultSet:
+                            break
+                    }
+                    this.firstParse(target, receiver)
+                    if (this.meta.access && !this.meta.access(target, prop, 'set')) {
+                        return undefined
+                    }
+                    if (value && JSONTag.getType(value)==='object' && !value[isProxy]) {
+                        value = this.getNewValueProxy(value)
+                    }
+                    if (target[prop] === value) {
+                        return true
+                    }
+                    target[prop] = value
+                    target[isChanged] = true
+                    return true
+                },
+                deleteProperty: (target, prop) => {
+                    if (this.immutable) {
+                        throw new Error('dataspace is immutable')
+                    }
+                    if (this.meta.access && !this.meta.access(target, prop, 'deleteProperty')) {
+                        return undefined
+                    }
+                    this.firstParse(target)
+                    if (typeof target[prop] === 'undefined') {
+                        return true
+                    }
+                    delete target[prop]
+                    target[isChanged] = true
+                    return true
+                },
+                ownKeys: (target) => {
+                    this.firstParse(target)
+                    return Reflect.ownKeys(target)
+                },
+                getOwnPropertyDescriptor: (target, prop) => {
+                    this.firstParse(target)
+                    return Reflect.getOwnPropertyDescriptor(target, prop)
+                },
+                defineProperty: (target, prop, descriptor) => {
+                    if (this.immutable) {
+                        throw new Error('dataspace is immutable')
+                    }
+                    if (this.meta.access && !this.meta.access(target, prop, 'defineProperty')) {
+                        return undefined
+                    }
+                    this.firstParse(target)
+                    target[isChanged] = true
+                    return Object.defineProperty(target, prop, descriptor)
+                },
+                has: (target, prop) => {
+                    if (this.meta.access && !this.meta.access(target, prop, 'has')) {
+                        return false
+                    }
+                    this.firstParse()
+                    return prop in target
+                },
+                setPrototypeOf: () => {
+                    throw new Error('changing prototypes is not supported')
+                }
+            }
+        }
     }
 
-    at = 0
-    ch = " "
 
-    let error = function(m)
+    next(c)
+    {
+        if (c && c!==this.ch) {
+            let source = SABtoString(this.input)
+            this.error("Expected '"+c+"' instead of '"+this.ch+"':"+this.at+':'+source)
+        }
+        this.ch = String.fromCharCode(this.input.at(this.at))
+        this.at+=1
+        return this.ch
+    }
+
+    error(m)
     {
         let context
         try {
-            context = decoder.decode(input.slice(at-100,at+100));
-        } catch(err) {}
+            context = decoder.decode(this.input.slice(this.at,this.at+100));
+        } catch(e) {
+            
+        }
         throw {
             name: 'SyntaxError',
             message: m,
-            at: at,
+            at: this.at,
             input: context
         }
     }
 
-    if (typeof input == 'string' || input instanceof String) {
-        input = stringToSAB(input)
-    }
-    if (!(input instanceof Uint8Array)) {
-        error('parse only accepts Uint8Array or String as input')
-    }
-
-    let next = function(c)
-    {
-        if (c && c!==ch) {
-            let source = SABtoString(input)
-            error("Expected '"+c+"' instead of '"+ch+"': "+at+':'+source)
-        }
-        ch = String.fromCharCode(input.at(at))
-        at+=1
-        return ch
-    }
-    
-    let number = function(tagName)
-    {
-        let numString = ''
-        if (ch==='-') {
-            numString = '-'
-            next('-')
-        }
-        while(ch>='0' && ch<='9') {
-            numString += ch
-            next()
-        }
-        if (ch==='.') {
-            numString+='.'
-            while(next() && ch >= '0' && ch <= '9') {
-                numString += ch
-            }
-        }
-        if (ch === 'e' || ch === 'E') {
-            numString += ch
-            next()
-            if (ch === '-' || ch === '+') {
-                numString += ch
-                next()
-            }
-            while (ch >= '0' && ch <= '9') {
-                numString += ch
-                next()
-            }
-        }
-        let result = new Number(numString).valueOf()
-        if (tagName) {
-            switch(tagName) {
-                case "int":
-                    isInt(numString)
-                    break
-                case "uint":
-                    isInt(numString, [0,Infinity])
-                    break
-                case "int8":
-                    isInt(numString, [-128,127])
-                    break
-                case "uint8":
-                    isInt(numString, [0,255])
-                    break
-                case "int16":
-                    isInt(numString, [-32768,32767])
-                    break
-                case "uint16":
-                    isInt(numString, [0,65535])
-                    break
-                case "int32":
-                    isInt(numString, [-2147483648, 2147483647])
-                    break
-                case "uint32":
-                    isInt(numString, [0,4294967295])
-                    break
-                case "timestamp":
-                case "int64":
-                    isInt(numString, [-9223372036854775808,9223372036854775807])
-                    break
-                case "uint64":
-                    isInt(numString, [0,18446744073709551615])
-                    break
-                case "float":
-                    isFloat(numString)
-                    break
-                case "float32":
-                    isFloat(numString, [-3.4e+38,3.4e+38])
-                    break
-                case "float64":
-                    isFloat(numString, [-1.7e+308,+1.7e+308])
-                    break
-                case "number":
-                    //FIXME: what to check? should already be covered by JSON parsing rules?
-                    break
-                default:
-                    isTypeError(tagName, numString)
-                    break
-            }
-        }
-        return result
-    }
-
-    let isTypeError = function(type, value)
-    {
-        error('Syntax error, expected '+type+', got: '+value)
-    }
-
-    const regexes = {
-        color: /^(rgb|hsl)a?\((\d+%?(deg|rad|grad|turn)?[,\s]+){2,3}[\s\/]*[\d\.]+%?\)$/i,
-        email: /^[A-Za-z0-9_!#$%&'*+\/=?`{|}~^.-]+@[A-Za-z0-9.-]+$/,
-        uuid:  /^[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}$/,
-        decimal: /^\d*\.?\d*$/,
-        money: /^[A-Z]+\$\d*\.?\d*$/,
-        duration: /^(-?)P(?=\d|T\d)(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)([DW]))?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/,
-        phone: /^[+]?(?:\(\d+(?:\.\d+)?\)|\d+(?:\.\d+)?)(?:[ -]?(?:\(\d+(?:\.\d+)?\)|\d+(?:\.\d+)?))*(?:[ ]?(?:x|ext)\.?[ ]?\d{1,5})?$/,
-        time: /^(\d{2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?$/,
-        date: /^-?[1-9][0-9]{3,}-([0][1-9]|[1][0-2])-([1-2][0-9]|[0][1-9]|[3][0-1])$/,
-        datetime: /^(\d{4,})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?$/,
-        range: /^\[-?(\d+\.)?\d+\,-?(\d+\.)?\d+\]$/
-    }
-
-    let isFloat = function(float, range)
-    {
-        let test = new Number(parseFloat(float))
-        let str = test.toString()
-        if (float!==str) {
-            error('Syntax Error: expected float value')
-        }
-        if (range) {
-            if (typeof range[0] === 'number') {
-                if (test<range[0]) {
-                    error('Syntax Error: float value out of range')
-                }
-            }
-            if (typeof range[1] === 'number') {
-                if (test>range[1]) {
-                    error('Syntax Error: float value out of range')    
-                }
-            }
-        }
-    }
-    
-    let isInt = function(int, range)
-    {
-        let test = new Number(parseInt(int))
-        let str = test.toString()
-        if (int!==str) {
-            error('Syntax Error: expected integer value')
-        }
-        if (range) {
-            if (typeof range[0] === 'number') {
-                if (test<range[0]) {
-                    error('Syntax Error: integer value out of range')
-                }
-            }
-            if (typeof range[1] === 'number') {
-                if (test>range[1]) {
-                    error('Syntax Error: integer value out of range')    
-                }
-            }
-        }
-    }
-
-    let isColor = function(color)
-    {
-        let result = false
-        if (color.charAt(0) === "#") {
-            color = color.substring(1)
-            result = ([3, 4, 6, 8].indexOf(color.length) > -1) && !isNaN(parseInt(color, 16))
-            if (result.toString(16)!==color) {
-                isTypeError('color', color)
-            }
-        } else {
-            result = regexes.color.test(color)
-        }
-        if (!result) {
-            isTypeError('color',color)
-        }
-        return true
-    }
-
-    let isEmail = function(email)
-    {
-        let result = regexes.email.test(email)
-        if (!result) {
-            isTypeError('email',email)
-        }
-        return true
-    }
-
-    let isUuid = function(uuid)
-    {
-        let result = regexes.uuid.test(uuid)
-        if (!result) {
-            isTypeError('uuid',uuid)
-        }
-        return true
-    }
-
-    let isDecimal = function(decimal)
-    {
-        let result = regexes.decimal.test(decimal)
-        if (!result) {
-            isTypeError('decimal',decimal)
-        }
-        return true
-    }
-
-    let isMoney = function(money)
-    {
-        let result = regexes.money.test(money)
-        if (!result) {
-            isTypeError('money',money)
-        }
-        return true
-    }
-    
-    let isUrl = function(url)
-    {
-        try {
-            return Boolean(new URL(url, meta.baseURL))
-        } catch(e) {
-            isTypeError('url',url)
-        }
-    }
-    
-    let isDuration = function(duration)
-    {
-        let result = regexes.duration.test(duration)
-        if (!result) {
-            isTypeError('duration',duration)
-        }
-        return true
-    }
-    
-    let isPhone = function(phone)
-    {
-        let result = regexes.phone.test(phone)
-        if (!result) {
-            isTypeError('phone',phone)
-        }
-        return true
-    }
-    
-    let isRange = function(range)
-    {
-        let result = regexes.range.test(range)
-        if (!result) {
-            isTypeError('range',range)
-        }
-        return true
-    }
-    
-    let isTime = function(time)
-    {
-        let result = regexes.time.test(time)
-        if (!result) {
-            isTypeError('time',time)
-        }
-        return true
-    }
-    
-    let isDate = function(date)
-    {
-        let result = regexes.date.test(date)
-        if (!result) {
-            isTypeError('date',date)
-        }
-        return true
-    }
-    
-    let isDatetime = function(datetime)
-    {
-        let result = regexes.datetime.test(datetime)
-        if (!result) {
-            isTypeError('datetime',datetime)
-        }
-        return true
-    }
-
-    let checkStringType = function(tagName, value)
-    {
-        if (!tagName) {
-            return
-        }
-        switch(tagName){
-            case "object":
-            case "array":
-            case "int8":
-            case "uint8":
-            case "int16":
-            case "uint16":
-            case "int32":
-            case "uint32":
-            case "int64":
-            case "uint64":
-            case "int":
-            case "uint":
-            case "float32":
-            case "float64":
-            case "float":
-            case "timestamp":
-                isTypeError(tagName, value)
-                break
-            case "uuid":
-                return isUuid(value)
-            case "decimal":
-                return isDecimal(value)
-            case "money":
-                return isMoney(value)
-            case "url":
-                return isUrl(value)
-            case "link":
-            case "string":
-            case "text":
-            case "blob":
-            case "hash":
-                //anything goes
-                return true
-            case "color":
-                return isColor(value)
-            case "email":
-                return isEmail(value)
-            case "duration":
-                return isDuration(value)
-            case "phone":
-                return isPhone(value)
-            case "range":
-                return isRange(value)
-            case "time":
-                return isTime(value)
-            case "date":
-                return isDate(value)
-            case "datetime":
-                return isDatetime(value)
-        }
-        error('Syntax error: unknown tagName '+tagName)
-    }    
-
-    let string = function(tagName)
-    {
-        let value = [], hex, i, uffff;
-        if (ch !== '"') {
-            error("Syntax Error")
-        }
-        next('"')
-        while(ch) {
-            if (ch==='"') {
-                next()
-                let bytes = new Uint8Array(value)
-                value = decoder.decode(bytes)
-                checkStringType(tagName, value)
-                return value
-            }
-            if (ch==='\\') {
-                next()
-                if (ch==='u') {
-                    for (i=0; i<4; i++) {
-                        hex = parseInt(next(), 16)
-                        if (!isFinite(hex)) {
-                            break
-                        }
-                        uffff = uffff * 16 + hex
-                    }
-                    let str = String.fromCharCode(uffff) 
-                    let bytes = encoder.encode(str)
-                    value.push.apply(value, bytes)
-                    next()
-                } else if (typeof escapee[ch] === 'string') {
-                    value.push(escapee[ch].charCodeAt(0))
-                    next()
-                } else {
-                    break
-                }
-            } else {
-                value.push(ch.charCodeAt(0))
-                next()
-            }
-        }
-        error("Syntax error: incomplete string")
-    }
-
-    let tag = function()
-    {
-        let key, val, tagOb={
-            attributes: {}
-        }
-        if (ch !== '<') {
-            error("Syntax Error")
-        }
-        next('<')
-        key = word()
-        if (!key) {
-            error('Syntax Error: expected tag name')
-        }
-        tagOb.tagName = key
-        whitespace()
-        while(ch) {
-            if (ch==='>') {
-                next('>')
-                return tagOb
-            }
-            key = word()
-            if (!key) {
-                error('Syntax Error: expected attribute name')
-            }
-            whitespace()
-            next('=')
-            whitespace()
-            val = string()
-            tagOb.attributes[key] = val
-            whitespace()
-        }
-        error('Syntax Error: unexpected end of input')
-    }
-
-    let whitespace = function()
-    {
-        while (ch) {
-            switch(ch) {
-                case ' ':
-                case "\t":
-                case "\r":
-                case "\n":
-                    next()
-                break
-                default:
-                    return
-                break
-            }
-        }
-    }
-
-    let word = function()
-    {
-        //[a-z][a-z0-9_]*
-        let val='';
-        if ((ch>='a' && ch<='z') || (ch>='A' && ch<='Z')) {
-            val += ch
-            next()
-        } else {
-            error('Syntax Error: expected word')
-        }
-        while((ch>='a' && ch<='z') || (ch>='A' && ch<='Z') || (ch>='0' && ch<='9') || ch=='_') {
-            val += ch
-            next()
-        }
-        return val
-    }
-
-    let boolOrNull = function(tagName)
-    {
-        let w = word()
-        if (!w || typeof w !== 'string') {
-            error('Syntax error: expected boolean or null, got "'+w+'"')
-        }
-        switch(w.toLowerCase()) {
-            case 'true':
-                if (tagName && tagName!=='boolean') {
-                    isTypeError(tagName,w)
-                }
-                return true
-            break
-            case 'false':
-                if (tagName && tagName!=='boolean') {
-                    isTypeError(tagName,w)
-                }
-                return false 
-            break
-            case 'null':
-                return null
-            break
-            default:
-                error('Syntax error: expected boolean or null, got "'+w+'"')
-            break
-        }
-    }
-
-    let checkUnresolved = function(item, object, key)
-    {
-        if (JSONTag.getType(item)==='link') {
-            let link = ''+item
-            let links = meta.unresolved.get(link)
-            if (typeof links === 'undefined') {
-                meta.unresolved.set(link,[])
-                links = meta.unresolved.get(link)
-            }
-            let count = links.push({
-                src: new WeakRef(object),
-                key: key
-            })
-        }
-    }
-
-    let array = function()
+    array()
     {
         let item, array = []
-        if (ch !== '[') {
-            error("Syntax error")
+        if (this.ch !== '[') {
+            this.error("Syntax error")
         }
-        next('[')
-        whitespace()
-        if (ch===']') {
-            next(']')
+        this.next('[')
+        this.whitespace()
+        if (this.ch===']') {
+            this.next(']')
             return array
         }
-        while(ch) {
-            item = value()
-            checkUnresolved(item, array, array.length)
+        while(this.ch) {
+            item = this.value()
+            this.checkUnresolved(item, array, array.length)
             if (isSlice(item)) {
-                array = array.concat(meta.resultArray.slice(item.start, item.end))
+                array = array.concat(this.meta.resultArray.slice(item.start, item.end))
             } else {
                 array.push(item)
             }
-            whitespace()
-            if (ch===']') {
-                next(']')
+            this.whitespace()
+            if (this.ch===']') {
+                this.next(']')
                 return array
             }
-            next(',')
-            whitespace()
+            this.next(',')
+            this.whitespace()
         }
-        error("Input stopped early")
+        this.error("Input stopped early")
     }
 
-    let object = function(object={})
+
+    object(object={})
     {
         let key, val
-        if (ch !== '{') {
-            error("Syntax Error")
+        if (this.ch !== '{') {
+            this.error("Syntax Error")
         }
-        next('{')
-        whitespace()
-        if (ch==='}') {
-            next('}')
+        this.next('{')
+        this.whitespace()
+        if (this.ch==='}') {
+            this.next('}')
             return object
         }
         let enumerable = true
-        while(ch) {
-            if (ch==='#') {
+        while(this.ch) {
+            if (this.ch==='#') {
                 enumerable = false
-                next()
+                this.next()
             } else {
                 enumerable = true
             }
-            key = string()
+            key = this.string()
             if (key==='__proto__') {
-                error("Attempt at prototype pollution")
+                this.error("Attempt at prototype pollution")
             }
-            whitespace()
-            next(':')
-            val = value()
+            this.whitespace()
+            this.next(':')
+            val = this.value()
             if (!enumerable) {
                 Object.defineProperty(object, key, {
                     configurable: true, //important, must be true, otherwise Proxies cannot use it
@@ -639,479 +447,158 @@ export default function parse(input, meta, immutable=true)
             } else {
                 object[key] = val
             }
-            checkUnresolved(val, object, key)
-            whitespace()
-            if (ch==='}') {
-                next('}')
+            this.checkUnresolved(val, object, key)
+            this.whitespace()
+            if (this.ch==='}') {
+                this.next('}')
                 return object
             }
-            next(',')
-            whitespace()
+            this.next(',')
+            this.whitespace()
         }
-        error("Input stopped early")
+        this.error("Input stopped early")
     }
 
-    let length = function()
+    string(tagName)
     {
-        whitespace()
-        next('(')
+        let value = [], hex, i, uffff;
+        if (this.ch !== '"') {
+            this.error("Syntax Error")
+        }
+        this.next('"')
+        while(this.ch) {
+            if (this.ch==='"') {
+                this.next()
+                let bytes = new Uint8Array(value)
+                value = decoder.decode(bytes)
+                this.checkStringType(tagName, value)
+                return value
+            }
+            if (this.ch==='\\') {
+                this.next()
+                if (this.ch==='u') {
+                    for (i=0; i<4; i++) {
+                        hex = parseInt(this.next(), 16)
+                        if (!this.isFinite(hex)) {
+                            break
+                        }
+                        uffff = uffff * 16 + hex
+                    }
+                    let str = String.fromCharCode(uffff) 
+                    let bytes = encoder.encode(str)
+                    value.push.apply(value, bytes)
+                    this.next()
+                } else if (typeof this.escapee[this.ch] === 'string') {
+                    value.push(this.escapee[this.ch].charCodeAt(0))
+                    this.next()
+                } else {
+                    break
+                }
+            } else {
+                value.push(this.ch.charCodeAt(0))
+                this.next()
+            }
+        }
+        this.error("Syntax error: incomplete string")
+    }
+
+    length()
+    {
+        this.whitespace()
+        this.next('(')
         let numString=''
-        while(ch>='0' && ch<='9') {
-            numString += ch
-            next()
+        while(this.ch>='0' && this.ch<='9') {
+            numString += this.ch
+            this.next()
         }
-        if (ch!==')') {
-            error('Syntax error: not a length')
+        if (this.ch!==')') {
+            this.error('Syntax error: not a length')
         }
-        next()
+        this.next()
         return parseInt(numString)
     }
 
-    let offset = function()
+    offset()
     {
-        next('~')
+        this.next('~')
         let numString = ''
-        while(ch>='0' && ch<='9') {
-            numString += ch
-            next()
+        while(this.ch>='0' && this.ch<='9') {
+            numString += this.ch
+            this.next()
         }
-        if (ch=='-') {
-            next('-')
+        if (this.ch=='-') {
+            this.next('-')
             let endString = ''
-            while(ch>='0' && ch<='9') {
-                endString += ch
-                next()
+            while(this.ch>='0' && this.ch<='9') {
+                endString += this.ch
+                this.next()
             }
             return new Slice(parseInt(numString),parseInt(endString)+1) // +1 because array.slice(start,end) slices upto but not including end
         }
         return parseInt(numString)
     }
 
-    let parseValue = function(position, ob={}) {
-        input = position.input
-        at = position.start
-        next()
-        return value(ob)
-    }
-
-    const makeChildProxies = function(parent) {
-        Object.entries(parent).forEach(([key,entry]) => {
-            if (Array.isArray(entry)) {
-                makeChildProxies(entry)
-            } else if (entry && JSONTag.getType(entry)==='object') {
-                if (entry[isProxy]) {
-                    // do nothing
-                } else {
-                    parent[key] = getNewValueProxy(entry)
-                }
-            }
-        })
-    }
-
-    const getArrayProxy = (arr, par, handler) => {
-        if (!handler) {
-            handler = handlers.arrayHandler
+    parseValue(position, ob={})
+    {
+        this.input = position.input
+        this.at = position.start
+        this.next()
+        let result = this.value(ob)
+        if (result instanceof JSONTag.Link) {
+            result = this.handleLink(result)
         }
-        if (!arrayProxies.has(arr)) {
-            arrayProxies.set(arr, new Proxy(arr, handler))
-        }
-        let aProxy = arrayProxies.get(arr)
-        aProxy[parent] = par
-        return aProxy
-    }
-
-    const handlers = {
-        newArrayHandler: {
-            get(target, prop) {
-                if (target[prop] instanceof Function) {
-                    return (...args) => {
-                        args = args.map(arg => {
-                            if (JSONTag.getType(arg)==='object' && !arg[isProxy]) {
-                                arg = getNewValueProxy(arg)
-                            }
-                            return arg
-                        })
-                        return target[prop].apply(target, args)
-                    }
-                } else if (prop===isChanged) {
-                    return true
-                } else {
-                    if (meta.access && !meta.access(target, prop)) {
-                        return undefined
-                    }
-                    if (Array.isArray(target[prop])) {
-                        return getArrayProxy(target[prop], target, handlers.newArrayHandler)
-                    }
-                    return target[prop]
-                }
-            },
-            set(target, prop, value) {
-                if (prop === isChanged || prop === parent) {
-                    // prevent infinite loops, parent is only needed to mark it isChanged
-                    // but this is a new array proxy, parent is already dirty
-                    return true
-                }
-                if (meta.access && !meta.access(target, prop)) {
-                    return undefined
-                }
-                if (JSONTag.getType(value)==='object' && !value[isProxy]) {
-                    value = getNewValueProxy(value)
-                } 
-                target[prop] = value
-                return true
-            }
-        },
-        newValueHandler: {
-            get(target, prop, receiver) {
-                switch(prop) {
-                    case resultSet:
-                        return meta.resultArray
-                    break;
-                    case source:
-                        return target
-                    break
-                    case isProxy:
-                        return true
-                    break
-                    case proxyType:
-                        return 'new'
-                    break
-                    case getBuffer:
-                        return (i) => {
-                            let index = target[getIndex]
-                            if (i != index) {
-                                return encoder.encode('~'+index)
-                            }
-                            return serialize(target, {meta, skipLength:true})
-                        }
-                    break
-                    case getIndex:
-                        return target[getIndex]
-                    break
-                    case isChanged:
-                        return true
-                    break
-                    default:
-                        if (meta.access && !meta.access(target, prop, 'get')) {
-                            return undefined
-                        }
-                        if (Array.isArray(target[prop])) {
-                            return getArrayProxy(target[prop], target, handlers.newArrayHandler)
-                        }
-                        return target[prop]
-                    break
-                } 
-            },
-            set(target, prop, value) {
-                if (meta.access && !meta.access(target, prop, 'set')) {
-                    return undefined
-                }
-                if (JSONTag.getType(value)==='object' && !value[isProxy]) {
-                    value = getNewValueProxy(value)
-                }
-                target[prop] = value
-                return true                    
-            }
-        },
-        arrayHandler: {
-            get(target, prop, receiver) {
-                const value = target?.[prop]
-                if (value instanceof Function) {
-                    // if (['copyWithin','fill','pop','push','reverse','shift','sort','splice','unshift'].indexOf(prop)!==-1) {
-                    //     if (immutable) {
-                    //         throw new Error('dataspace is immutable')
-                    //     }
-                    // }
-                    return (...args) => {
-                        args = args.map(arg => {
-                            if (JSONTag.getType(arg)==='object' && !arg[isProxy]) {
-                                arg = getNewValueProxy(arg)
-                            }
-                            return arg
-                        })
-                        return value.apply(receiver, args)
-                    }
-                } else if (prop===isChanged) {
-                    return target[isChanged] || target[parent][isChanged]
-                } else if (prop===source) {
-                    return target
-                } else {
-                    if (meta.access && !meta.access(target, prop, 'get')) {
-                        return undefined
-                    }
-                    if (Array.isArray(value)) {
-                        return getArrayProxy(value, target)
-                    }
-                    return value
-                }
-            },
-            set(target, prop, value) {
-                if (prop == parent) {
-                    target[parent] = value
-                    return true
-                }
-                if (immutable) {
-                    throw new Error('dataspace is immutable')
-                }
-                if (meta.access && !meta.access(target, prop, 'set')) {
-                    return undefined
-                }
-                if (JSONTag.getType(value)==='object' && !value[isProxy]) {
-                    value = getNewValueProxy(value)
-                }
-                if (target[prop] === value) {
-                    return true
-                } 
-                target[prop] = value
-                target[isChanged] = true
-                target[parent][isChanged] = true
-                return true
-            },
-            deleteProperty(target, prop) {
-                if (immutable) {
-                    throw new Error('dataspace is immutable')
-                }
-                if (meta.access && !meta.access(target, prop, 'deleteProperty')) {
-                    return undefined
-                }
-                //FIXME: if target[prop] was the last reference to an object
-                //that object should be deleted so that its line will become empty
-                //when stringifying resultArray again
-                if (typeof target[prop] === 'undefined') {
-                    return true
-                }
-                delete target[prop]
-                target[isChanged] = true
-                target[parent][isChanged] = true
-                return true
-            }
-        },
-        handler: {
-            get(target, prop, receiver) {
-                switch(prop) {
-                    case resultSet:
-                        return meta.resultArray
-                    break;
-                    case isProxy:
-                        return true
-                    break
-                    case proxyType:
-                        return 'parse'
-                    break
-                    case getBuffer:
-                        return (i) => {
-                            let index = target[getIndex]
-                            if (i != index) {
-                                return encoder.encode('~'+index)
-                            }
-                            if (target[isChanged]) {
-                                return serialize(target, {skipLength: true})
-                            }
-                            return target[position].input.slice(target[position].start,target[position].end)
-                        }
-                    break
-                    case getIndex:
-                        return target[getIndex]
-                    break
-                    case isChanged:
-                        return target[isChanged]
-                    break
-                }
-                firstParse(target, receiver)
-                switch(prop) {
-                    case source:
-                        if (meta.access && !meta.access(target, prop, 'get')) {
-                            return undefined
-                        }
-                        return target
-                    break
-                    default:
-                        if (meta.access && !meta.access(target, prop, 'get')) {
-                            return undefined
-                        }
-                        if (Array.isArray(target[prop])) {
-                            return getArrayProxy(target[prop], target)
-                        }
-                        return target[prop]
-                    break
-                }
-            },
-            set(target, prop, value, receiver) {
-                if (immutable && prop!==resultSet && prop!==source && prop!==isChanged) {
-                    throw new Error('dataspace is immutable')
-                }
-                switch(prop) {
-                    case isChanged:
-                        break
-                    case source:
-                        resetObject(target)
-                        target[position] = value[position]
-                        target[isParsed] = false
-                        target[isChanged] = false
-                        return true
-                        break
-                    case resultSet:
-                        break
-                }
-                firstParse(target, receiver)
-                if (meta.access && !meta.access(target, prop, 'set')) {
-                    return undefined
-                }
-                if (value && JSONTag.getType(value)==='object' && !value[isProxy]) {
-                    value = getNewValueProxy(value)
-                }
-                if (target[prop] === value) {
-                    return true
-                }
-                target[prop] = value
-                target[isChanged] = true
-                return true
-            },
-            deleteProperty(target, prop) {
-                if (immutable) {
-                    throw new Error('dataspace is immutable')
-                }
-                if (meta.access && !meta.access(target, prop, 'deleteProperty')) {
-                    return undefined
-                }
-                firstParse(target)
-                if (typeof target[prop] === 'undefined') {
-                    return true
-                }
-                delete target[prop]
-                target[isChanged] = true
-                return true
-            },
-            ownKeys(target) {
-                firstParse(target)
-                return Reflect.ownKeys(target)
-            },
-            getOwnPropertyDescriptor(target, prop) {
-                firstParse(target)
-                return Reflect.getOwnPropertyDescriptor(target, prop)
-            },
-            defineProperty(target, prop, descriptor) {
-                if (immutable) {
-                    throw new Error('dataspace is immutable')
-                }
-                if (meta.access && !meta.access(target, prop, 'defineProperty')) {
-                    return undefined
-                }
-                firstParse(target)
-                target[isChanged] = true
-                return Object.defineProperty(target, prop, descriptor)
-            },
-            has(target, prop) {
-                if (meta.access && !meta.access(target, prop, 'has')) {
-                    return false
-                }
-                firstParse()
-                return prop in target
-            },
-            setPrototypeOf(target,proto) {
-                throw new Error('changing prototypes is not supported')
-            }
-        }
-    }
-
-    const firstParse = function(target, receiver) {
-        if (!target[isParsed]) {
-            parseValue(target[position], target)
-            target[isParsed] = true
-        }
-        if (receiver && !target[isReceived]) {
-            //FIXME: this breaks on a Proxy without receiver param
-            //e.g. odJSONTag and a call to ownKeys triggering the first parse
-            let tag = JSONTag.getType(target)
-            if (tag) {
-                JSONTag.setType(receiver, tag)
-            }
-            let attributes = JSONTag.getAttributes(target)
-            if (attributes) {
-                JSONTag.setAttributes(receiver, attributes)
-            }
-            target[isReceived] = true
-        }
-    }
-
-    function resetObject(ob) {
-        for (let prop of Object.getOwnPropertyNames(ob)) {
-            delete ob[prop]
-        }
-    }
-
-    const getNewValueProxy = function(value) {
-        if (value === null) {
-            return null
-        }
-        let index = meta.resultArray.length
-        meta.resultArray.push('')
-        value[getIndex] = index
-        makeChildProxies(value)
-        let result = new Proxy(value, handlers.newValueHandler)
-        meta.resultArray[index] = result
         return result
     }
 
-    let valueProxy = function(length, index)
+    handleLink(link)
     {
-        let cache = {}
-        cache[getIndex] = index
-        cache[isChanged] = false
-        cache[isParsed] = false
-        // current offset + length contains jsontag of this value
-        cache[position] = {
-            input,
-            start: at-1,
-            end: at-1+length
+        let id = ''+link
+        let links = this.meta.unresolved.get(id)
+        if (links.length) {
+            throw Error('nyi')            
         }
-        at += length
-        next()
-        // newValueHandler makes sure that value[getBuffer] runs stringify
-        // arrayHandler makes sure that changes in the array set targetIsChanged to true
-        return new Proxy(cache, handlers.handler)
     }
 
     value = function(ob={})
     {
         let tagOb, result, tagName;
-        whitespace()
-        if (ch==='~') {
-            let vOffset = offset()
+        this.whitespace()
+        if (this.ch==='~') {
+            let vOffset = this.offset()
             if (isSlice(vOffset)) {
                 return vOffset
             }
-            return meta.resultArray[vOffset]
+            return this.meta.resultArray[vOffset]
         }
-        if (ch==='<') {
-            tagOb = tag()
+        if (this.ch==='<') {
+            tagOb = this.tag()
             tagName = tagOb.tagName
-            whitespace()
+            this.whitespace()
         }
-        switch(ch) {
+        switch(this.ch) {
             case '{':
                 if (tagName && tagName!=='object') {
-                    isTypeError(tagName, ch)
+                    this.typeError(tagName, this.ch)
                 }
-                result = object(ob)
+                result = this.object(ob)
             break
             case '[':
                 if (tagName && tagName!=='array') {
-                    isTypeError(tagName, ch)
+                    this.typeError(tagName, this.ch)
                 }
-                result = array()
+                result = this.array()
             break
             case '"':
-                result = string(tagName)
+                result = this.string(tagName)
             break
             case '-':
-                result = number(tagName)
+                result = this.number(tagName)
             break
             default:
-                if (ch>='0' && ch<='9') {
-                    result = number(tagName)
+                if (this.ch>='0' && this.ch<='9') {
+                    result = this.number(tagName)
                 } else {
-                    result = boolOrNull(tagName)
+                    result = this.boolOrNull(tagName)
                 }
             break
         }
@@ -1128,7 +615,7 @@ export default function parse(input, meta, immutable=true)
                         result = new Number(result)
                         break
                     default:
-                        error('Syntax Error: unexpected type '+(typeof result))
+                        this.error('Syntax Error: unexpected type '+(typeof result))
                         break
                 }
             }
@@ -1141,41 +628,136 @@ export default function parse(input, meta, immutable=true)
         }
         return result
     }
-
-    function jump() {
-        next('+')
-        return number()
+    
+    jump()
+    {
+        this.next('+')
+        return this.number()
     }
 
-    function lengthValue(i) {
-        whitespace()
-        if (!ch) {
-            next()
+    lengthValue(i)
+    {
+        this.whitespace()
+        if (!this.ch) {
+            this.next()
         }
         let l, v
-        if (ch=='+') {
-            i += jump()
+        if (this.ch=='+') {
+            i += this.jump()
         } else {
-            l = length()
-            v = valueProxy(l,i)
+            l = this.length()
+            v = this.valueProxy(l,i)
         }
         return [l, v, i]
     }
 
-    let line = 0
-    while(ch && at<input.length) {
-        result = lengthValue(line) // needs to return current line nr
-        whitespace()
-        offsetArray.push(at)
-        line = result[2]
-        if (result[1]) {
-            if (!meta.resultArray[line] || meta.resultArray[line][proxyType]=='new') {
-                meta.resultArray[line] = result[1]
-            } else {
-                meta.resultArray[line][source] = result[1]
+    valueProxy(length, index)
+    {
+        let cache = {}
+        cache[getIndex] = index
+        cache[isChanged] = false
+        cache[isParsed] = false
+        // current offset + length contains jsontag of this value
+        cache[position] = {
+            input: this.input,
+            start: this.at-1,
+            end: this.at-1+length
+        }
+        this.at += length
+        this.next()
+        // newValueHandler makes sure that value[getBuffer] runs stringify
+        // arrayHandler makes sure that changes in the array set targetIsChanged to true
+        let result = new Proxy(cache, this.handlers.defaultHandler)
+        this.cachedProxies.set(cache, result)
+        return result
+    }
+
+    makeChildProxies(parent)
+    {
+        Object.entries(parent).forEach(([key,entry]) => {
+            if (Array.isArray(entry)) {
+                this.makeChildProxies(entry)
+            } else if (entry && JSONTag.getType(entry)==='object') {
+                if (entry[isProxy]) {
+                    // do nothing
+                } else {
+                    parent[key] = this.getNewValueProxy(entry)
+                }
             }
-            line++
+        })
+    }
+
+    getArrayProxy(arr, par, handler)
+    {
+        if (!handler) {
+            handler = this.handlers.arrayHandler
+        }
+        if (!this.cachedProxies.has(arr)) {
+            this.cachedProxies.set(arr, new Proxy(arr, handler))
+        }
+        let aProxy = this.cachedProxies.get(arr)
+        aProxy[parent] = par
+        return aProxy
+    }
+
+    firstParse(target)
+    {
+        if (!target[isParsed]) {
+            this.parseValue(target[position], target)
+            target[isParsed] = true
         }
     }
-    return meta.resultArray[0]
+
+
+    getNewValueProxy(value)
+    {
+        if (value === null) {
+            return null
+        }
+        let index = this.meta.resultArray.length
+        this.meta.resultArray.push('')
+        value[getIndex] = index
+        this.makeChildProxies(value)
+        let result = new Proxy(value, this.handlers.newValueHandler)
+        this.cachedProxies.set(value, result)
+        this.meta.resultArray[index] = result
+        return result
+    }
+
+    parse(input)
+    {
+        if (typeof input == 'string' || input instanceof String) {
+            input = stringToSAB(input)
+        }
+        if (!(input instanceof Uint8Array)) {
+            this.error('parse only accepts Uint8Array or String as input')
+        }
+        if (!this.meta.resultArray) {
+            this.meta.resultArray = []
+        }
+
+        this.ch = ' '
+        this.at = 0
+        this.input = input
+
+        let line = 0
+        while(this.ch && this.at<this.input.length) {
+            let result = this.lengthValue(line) // needs to return current line nr
+            this.whitespace()
+            line = result[2]
+            if (result[1]) {
+                if (!this.meta.resultArray[line] || this.meta.resultArray[line][proxyType]=='new') {
+                    this.meta.resultArray[line] = result[1]
+                } else {
+                    this.meta.resultArray[line][source] = result[1]
+                }
+                line++
+            }
+        }
+        return this.meta.resultArray[0]
+    }
+
+    checkUnresolved() {
+
+    }
 }

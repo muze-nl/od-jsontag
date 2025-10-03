@@ -1,6 +1,5 @@
 import JSONTag from '@muze-nl/jsontag';
 import {source,isProxy, isChanged, getIndex, getBuffer, resultSet} from './symbols.mjs'
-import * as odJSONTag from './jsontag.mjs'
 
 // faststringify function for a fast parseable arraybuffer output
 // 
@@ -40,8 +39,8 @@ export default function serialize(value, options={}) {
 
 	function stringifyValue(value, inarray=false, current) {
 		let prop
-		let typeString = odJSONTag.getTypeString(value)
-		let type = odJSONTag.getType(value)
+		let typeString = JSONTag.getTypeString(value)
+		let type = JSONTag.getType(value)
 		switch (type) {
 			case 'string':
 			case 'decimal':
@@ -59,7 +58,7 @@ export default function serialize(value, options={}) {
 			case 'date':
 			case 'time':
 			case 'datetime':
-				if (odJSONTag.isNull(value)) {
+				if (JSONTag.isNull(value)) {
 					value = 'null'
 				} else {
 					value = realJSON.stringify(''+value)
@@ -82,7 +81,7 @@ export default function serialize(value, options={}) {
 			case 'timestamp':
 			case 'number':
 			case 'boolean':
-				if (odJSONTag.isNull(value)) {
+				if (JSONTag.isNull(value)) {
 					value = 'null'
 				} else {
 					value = realJSON.stringify(value)
@@ -149,7 +148,7 @@ export default function serialize(value, options={}) {
 		let result 
 
 		// if value is a valueProxy, just copy the input slice
-		if (object && !odJSONTag.isNull(object) && object[isProxy] && !object[isChanged]) {
+		if (object && !JSONTag.isNull(object) && object[isProxy] && !object[isChanged]) {
 			return decoder.decode(object[getBuffer](current))
 		}
 		if (typeof object === 'undefined' || object === null) {
@@ -163,7 +162,7 @@ export default function serialize(value, options={}) {
 			let enumerable = object.propertyIsEnumerable(key) ? '' : '#'
 			props.push(enumerable+realJSON.stringify(key)+':'+prop) //FIXME: how does key get escaped?
 		}
-		result = odJSONTag.getTypeString(object)+'{'+props.join(',')+'}'
+		result = JSONTag.getTypeString(object)+'{'+props.join(',')+'}'
 		return result
 	}
 		
@@ -201,7 +200,7 @@ export default function serialize(value, options={}) {
 			}
 			result[currentResult] = encoder.encode(innerStringify(currentSource))
 			if (options.meta) {
-				const id=odJSONTag.getAttribute(resultArray[currentSource],'id')
+				const id=JSONTag.getAttribute(resultArray[currentSource],'id')
 				if (id) {
 					options.meta.index.id.set(id, currentSource)
 				}
@@ -210,7 +209,7 @@ export default function serialize(value, options={}) {
 		} else if (!options.changes) {
 			result[currentResult] = resultArray[currentSource][getBuffer](currentSource)
 			if (options.meta) {
-				const id=odJSONTag.getAttribute(resultArray[currentSource],'id')
+				const id=JSONTag.getAttribute(resultArray[currentSource],'id')
 				if (id) {
 					options.meta.index.id.set(id, currentSource)
 				}
