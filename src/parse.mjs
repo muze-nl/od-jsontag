@@ -40,6 +40,8 @@ const isSlice = function(r)
 
 const resetObject = function(ob)
 {
+    delete ob[Symbol['JSONTag:Type']]
+    delete ob[Symbol['JSONTag:Attributes']]
     for (let prop of Object.getOwnPropertyNames(ob)) {
         delete ob[prop]
     }
@@ -417,6 +419,7 @@ export default class Parser extends JSONTag.Parser
         }
         this.next('{')
         this.whitespace()
+        resetObject(object)
         if (this.ch==='}') {
             this.next('}')
             return object
