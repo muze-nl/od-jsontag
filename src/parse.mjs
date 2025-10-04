@@ -60,6 +60,17 @@ export default class Parser extends JSONTag.Parser
         this.handlers = {
             newArrayHandler: {
                 get: (target, prop) => {
+                    switch(prop) {
+                        case source:
+                            return target
+                        break
+                        case isProxy:
+                            return true
+                        break
+                        case proxyType:
+                            return 'new'
+                        break
+                    }
                     if (target[prop] instanceof Function) {
                         return (...args) => {
                             args = args.map(arg => {
@@ -152,17 +163,31 @@ export default class Parser extends JSONTag.Parser
             },
             arrayHandler: {
                 get: (target, prop, receiver) => {
+                    switch(prop) {
+                        case source:
+                            return target
+                        break
+                        case isProxy:
+                            return true
+                        break
+                        case proxyType:
+                            return 'array'
+                        break
+                    }
                     const value = target?.[prop]
                     if (value instanceof Function) {
-                        // if (['copyWithin','fill','pop','push','reverse','shift','sort','splice','unshift'].indexOf(prop)!==-1) {
-                        //     if (immutable) {
-                        //         throw new Error('dataspace is immutable')
-                        //     }
-                        // }
+                        if (['copyWithin','fill','pop','push','reverse','shift','sort','splice','unshift'].indexOf(prop)!==-1) {
+                            if (this.immutable) {
+                                throw new Error('dataspace is immutable')
+                            }
+                        }
                         return (...args) => {
                             args = args.map(arg => {
-                                if (JSONTag.getType(arg)==='object' && !arg[isProxy]) {
-                                    arg = this.getNewValueProxy(arg)
+                                if (!arg[isProxy]) {
+                                    let type = JSONTag.getType(arg)
+                                    if (type==='object' || type==='link') { //FIXME: check if other types need handling
+                                        arg = this.getNewValueProxy(arg)
+                                    }
                                 }
                                 return arg
                             })
@@ -679,10 +704,9 @@ export default class Parser extends JSONTag.Parser
         Object.entries(parent).forEach(([key,entry]) => {
             if (Array.isArray(entry)) {
                 this.makeChildProxies(entry)
-            } else if (entry && JSONTag.getType(entry)==='object') {
-                if (entry[isProxy]) {
-                    // do nothing
-                } else {
+            } else if (entry && !entry[isProxy]) {
+                let type = JSONTag.getType(entry)
+                if (type==='object' || type==='link') {//FIXME: check for other types
                     parent[key] = this.getNewValueProxy(entry)
                 }
             }
@@ -715,6 +739,12 @@ export default class Parser extends JSONTag.Parser
     {
         if (value === null) {
             return null
+        }
+        if (JSONTag.getType(value)=='link') {
+            let index = this.meta.index.id.get(''+value)
+            if (typeof index != 'undefined') {
+                return this.meta.resultArray[index]
+            }
         }
         let index = this.meta.resultArray.length
         this.meta.resultArray.push('')
@@ -759,10 +789,12 @@ export default class Parser extends JSONTag.Parser
         return this.meta.resultArray[0]
     }
 
-    checkUnresolved() {
+    checkUnresolved(item, object, key) {
         // TODO:
         // for now assume there are no <link> objects in od-jsontag
         // JSONTag Parser.checkUnresolved triggers firstParse, 
         // while parsing the current object
+        // incorrect: when adding a new object from a JSONTag string
+        // it may contain links which cannot yet be resolved... these need to be handled
     }
 }

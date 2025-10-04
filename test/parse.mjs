@@ -1,5 +1,5 @@
 import JSONTag from '@muze-nl/jsontag'
-import {isChanged, source, getBuffer, getIndex} from '../src/symbols.mjs'
+import {isChanged, source, getBuffer, getIndex, isProxy, proxyType} from '../src/symbols.mjs'
 import Parser from '../src/parse.mjs'
 import serialize, {stringify} from '../src/serialize.mjs'
 import tap from 'tap'
@@ -210,5 +210,53 @@ tap.test('JSONTag compatibility', t => {
 	JSONTag.setAttribute(odData.foo[0], 'class', 'bar')
 	t.same(JSONTag.getAttribute(odData.foo[0], 'class'), 'bar')
 	t.same(JSONTag.getAttribute(odData.foo[0][source], 'class'), 'bar')
+	t.end()
+})
+
+tap.test('handle JSONTag links', t => {
+	const dataStr = `{
+    "foo":[
+        <object id="bar">{
+            "bar":"baz"
+        }
+    ]
+}`
+	const data = JSONTag.parse(dataStr)
+	const odDataBuf = serialize(data)
+	const parser = new Parser()
+	parser.immutable = false
+	const odData = parser.parse(odDataBuf)
+	// create index
+	let sab = serialize(odData, {meta:parser.meta})
+
+	const l = new JSONTag.Link('bar')
+	odData.foo.push(l)
+	t.same(odData.foo[0], odData.foo[1])
+	t.end()
+})
+
+tap.test('handle nested JSONTag links', t => {
+	const dataStr = `{
+    "foo":[
+        <object id="bar">{
+            "bar":"baz"
+        }
+    ]
+}`
+	const data = JSONTag.parse(dataStr)
+	const odDataBuf = serialize(data)
+	const parser = new Parser()
+	parser.immutable = false
+	const odData = parser.parse(odDataBuf)
+	// create index
+	let sab = serialize(odData, {meta:parser.meta})
+
+	const addedDataStr = `
+<object id="baz">{
+	"foo": <link>"bar"
+}`
+	const addedData = JSONTag.parse(addedDataStr)
+	odData.baz = addedData
+	t.same(odData.foo[0], odData.baz.foo)
 	t.end()
 })
