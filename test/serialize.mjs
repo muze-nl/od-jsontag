@@ -264,7 +264,6 @@ tap.test('stringify keys', t => {
 	}
 	const result = stringify(serialize(ob))
 	const expect = "(67){\"\\\\\":\"slash\",\"\\n\":\"enter\",\"\\\"\":\"quote\",\"\\t\":\"tab\",\"€\":\"unicode\"}"
-	console.log(result)
 	t.same(result, expect)
 	t.end()
 })
