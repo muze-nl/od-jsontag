@@ -2,7 +2,7 @@ import JSONTag from '@muze-nl/jsontag'
 import * as odJSONTag from '../src/jsontag.mjs'
 import serialize, {stringify} from '../src/serialize.mjs'
 import {source, isChanged, getBuffer, getIndex, isProxy} from '../src/symbols.mjs'
-import parse from '../src/parse.mjs'
+import Parser from '../src/parse.mjs'
 import tap from 'tap'
 
 tap.test('Links', t => {
@@ -39,7 +39,8 @@ tap.test('identity', t => {
 	let strData = `(23){"foo":[~1],"bar":[~2]}
 (64)<object class="foo" id="1">{"name":"Foo",#"nonEnumerable":"bar"}
 (57)<object class="bar" id="2">{"name":"Bar","children":[~1]}`
-	let root = parse(strData);
+	const parser = new Parser()
+	let root = parser.parse(strData);
 	t.equal(odJSONTag.getAttribute(root.foo[0], 'id'), '1')
 	let meta = {}
 	let sab = serialize(root, {meta})
@@ -51,7 +52,8 @@ tap.test('access after serialize', t => {
 	let strData = `(23){"foo":[~1],"bar":[~2]}
 (64)<object class="foo" id="1">{"name":"Foo",#"nonEnumerable":"bar"}
 (57)<object class="bar" id="2">{"name":"Bar","children":[~1]}`
-	let root = parse(strData);
+	const parser = new Parser()
+	let root = parser.parse(strData);
 	let foo = root.foo[0]
 	let meta = {}
 	let string = stringify(serialize(root, {meta}))
@@ -68,7 +70,9 @@ tap.test('update', async t => {
 (64)<object class="foo" id="1">{"name":"Baz",#"nonEnumerable":"bar"}
 (57)<object class="bar" id="2">{"name":"Bar","children":[~1]}`
 	
-	let root = parse(strData, {}, false)
+	const parser = new Parser()
+	parser.immutable = false
+	let root = parser.parse(strData)
 	root.foo[0].name='Baz'
 	t.equal(root.foo[0].name, 'Baz')
 	let b = serialize(root)
@@ -86,7 +90,9 @@ tap.test('append', t => {
 (64)<object class="foo" id="1">{"name":"Foo",#"nonEnumerable":"bar"}
 (57)<object class="bar" id="2">{"name":"Bar","children":[~1]}
 (30){"name":"Baz","children":[~1]}`
-	let root = parse(strData, {}, false)
+	const parser = new Parser()
+	parser.immutable = false
+	let root = parser.parse(strData)
 	root.foo.push({
 		name: 'Baz',
 		children: [
@@ -111,7 +117,9 @@ tap.test('appendChild', t => {
 (30){"name":"Baz","children":[~4]}
 (16){"name":"Child"}`
 	
-	let root = parse(strData, {}, false)
+	const parser = new Parser()
+	parser.immutable = false
+	let root = parser.parse(strData)
 	root.foo.push({
 		name: 'Baz',
 		children: [
@@ -134,13 +142,14 @@ tap.test('delete', t => {
 (64)<object class="foo" id="1">{"name":"Foo",#"nonEnumerable":"bar"}
 (57)<object class="bar" id="2">{"name":"Bar","children":[~1]}`
 	
-	let root = parse(strData, {}, false)
+	const parser = new Parser()
+	parser.immutable = false
+	let root = parser.parse(strData)
 	root.foo.pop()
 	strData = stringify(serialize(root))
 	t.equal(root.foo[isChanged], true)
 	t.equal(strData, expect)
 	t.end()
-
 })
 
 tap.test('circular', t => {
@@ -163,14 +172,16 @@ tap.test('circular', t => {
 
 tap.test('nonEnumerableArrayProxy', t => {
 	let strData = `(64)<object class="foo" id="1">{"name":"Foo",#"arr":["foo","bar"]}`
-	let root = parse(strData) // immutable
+	const parser = new Parser()
+	let root = parser.parse(strData) // immutable
 	try {
 		root.arr.push('baz')
 		t.ok(false)
 	} catch(e) {
 		t.ok(true)
 	}
-	root = parse(strData, {}, false) // mutable
+	parser.immutable = false
+	root = parser.parse(strData) // mutable
 	root.arr.push('baz')
 	t.same(root.arr[2], 'baz')
 	t.end()
@@ -178,7 +189,9 @@ tap.test('nonEnumerableArrayProxy', t => {
 
 tap.test('nonEnumerableArrayLink', t => {
 	let strData = `(53)<object class="foo" id="1">{"name":"Foo",#"arr":[~0]}`
-	let root = parse(strData, {}, false)
+	const parser = new Parser()
+	parser.immutable = false
+	let root = parser.parse(strData)
 	root.name = 'Bar' // force change
 	let buf = serialize(root)
 	let str = stringify(buf)
@@ -190,7 +203,9 @@ tap.test('changes-only', t => {
 	let strData = `(23){"foo":[~1],"bar":[~2]}
 (45)<object id="1">{"name":"Foo","children":[~2]}
 (45)<object id="2">{"name":"Bar","children":[~1]}`
-	let data = parse(strData, {}, false)
+	const parser = new Parser()
+	parser.immutable = false
+	let data = parser.parse(strData)
 	data.bar[0].name = 'Baz'
 	let result = stringify(serialize(data, {changes: true}))
 	t.same(result, `+2
@@ -202,11 +217,12 @@ tap.test('changes-only-update', t => {
 	let strData = `(23){"foo":[~1],"bar":[~2]}
 (45)<object id="1">{"name":"Foo","children":[~2]}
 (45)<object id="2">{"name":"Bar","children":[~1]}`
-	let meta = {}
-	let data = parse(strData, meta, false)
+	let myparser = new Parser()
+	myparser.immutable = false
+	let data = myparser.parse(strData)
 	data.bar[0].name = 'Baz'
 	let result = stringify(serialize(data, {changes: true}))
-	parse(result, meta, false)
+	myparser.parse(result)
 	data.foo[0].name = 'Fooz'
 	let result2 = stringify(serialize(data, {changes: true}))
 	t.same(result2, `+1
@@ -218,22 +234,23 @@ tap.test('changes-only-additions', t => {
 	let strData = `(23){"foo":[~1],"bar":[~2]}
 (45)<object id="1">{"name":"Foo","children":[~2]}
 (45)<object id="2">{"name":"Bar","children":[~1]}`
-	let meta = {}
-	let data = parse(strData, meta, false)
+	let myparser = new Parser()
+	myparser.immutable = false
+	let data = myparser.parse(strData)
 	
 	data.bar.push({name: 'FooBar'})
-	let result = stringify(serialize(data, {meta, changes: true}))
-	parse(result, meta, false)
+	let result = stringify(serialize(data, {meta:myparser.meta, changes: true}))
+	myparser.parse(result)
 
-	t.ok(!meta.resultArray[3][isChanged])
+	t.ok(!myparser.meta.resultArray[3][isChanged])
 	let fooz = {name: 'Fooz'}
 	JSONTag.setAttribute(fooz, 'id', 'fooz')
 	data.bar.push(fooz)
-	let result2 = stringify(serialize(data, {meta, changes: true}))
+	let result2 = stringify(serialize(data, {meta:myparser.meta, changes: true}))
 	t.same(result2, `(25){"foo":[~1],"bar":[~2-4]}
 +3
 (33)<object id="fooz">{"name":"Fooz"}`)
-	t.same(meta.index.id.get('fooz'), 4)
+	t.same(myparser.meta.index.id.get('fooz'), 4)
 	t.end()
 })
 
@@ -269,8 +286,9 @@ tap.test('<undefined>', t => {
 		]
 	}
 	const buff = serialize(ob)
-	let meta = {}
-	const data = parse(buff, meta, false)
+	let myparser = new Parser()
+	myparser.immutable = false
+	const data = myparser.parse(buff)
 
 	odJSONTag.setAttribute(data.Doelniveau[0], 'foo', 'bar')
 	t.same(data.Doelniveau[0][isChanged], true)
@@ -279,7 +297,7 @@ tap.test('<undefined>', t => {
 (40)<object foo="bar">{"name":"test entity"}`)
 
 	odJSONTag.setAttribute(data.Doelniveau, 'foo', 'bar')
-	t.equal(data, meta.resultArray[data[getIndex]])
+	t.equal(data, myparser.meta.resultArray[data[getIndex]])
 	t.equal(data[isProxy], true)
 	t.same(data[isChanged], true)
 	t.same(data.Doelniveau[isChanged], true)
