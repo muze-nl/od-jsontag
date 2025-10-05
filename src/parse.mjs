@@ -74,7 +74,8 @@ export default class Parser extends JSONTag.Parser
                     if (target[prop] instanceof Function) {
                         return (...args) => {
                             args = args.map(arg => {
-                                if (JSONTag.getType(arg)==='object' && !arg[isProxy]) {
+                                const type = JSONTag.getType(arg)
+                                if (type==='object' || type==='link') {
                                     arg = this.getNewValueProxy(arg)
                                 }
                                 return arg
@@ -102,7 +103,10 @@ export default class Parser extends JSONTag.Parser
                     if (this.meta.access && !this.meta.access(target, prop)) {
                         return undefined
                     }
-                    if (JSONTag.getType(value)==='object' && !value[isProxy]) {
+                    const type = JSONTag.getType(arg)
+                    if ((type==='object' || type==='link')
+                        && typeof prop !== 'symbol'
+                    ) {
                         value = this.getNewValueProxy(value)
                     } 
                     target[prop] = value
@@ -154,7 +158,10 @@ export default class Parser extends JSONTag.Parser
                     if (this.meta.access && !this.meta.access(target, prop, 'set')) {
                         return undefined
                     }
-                    if (JSONTag.getType(value)==='object' && !value[isProxy]) {
+                    const type = JSONTag.getType(arg)
+                    if ((type==='object' || type==='link')
+                        && typeof prop !== 'symbol'
+                    ) {
                         value = this.getNewValueProxy(value)
                     }
                     target[prop] = value
@@ -218,7 +225,10 @@ export default class Parser extends JSONTag.Parser
                     if (this.meta.access && !this.meta.access(target, prop, 'set')) {
                         return undefined
                     }
-                    if (JSONTag.getType(value)==='object' && !value[isProxy]) {
+                    const type = JSONTag.getType(value)
+                    if ((type==='object' || type==='link') //FIXME: check if other types need handling
+                        && typeof prop !== 'symbol'
+                    ) {
                         value = this.getNewValueProxy(value)
                     }
                     if (target[prop] === value) {
@@ -319,7 +329,10 @@ export default class Parser extends JSONTag.Parser
                     if (this.meta.access && !this.meta.access(target, prop, 'set')) {
                         return undefined
                     }
-                    if (value && JSONTag.getType(value)==='object' && !value[isProxy]) {
+                    const type = JSONTag.getType(value)
+                    if ((type==='object' || type==='link') //FIXME: check if other types need handling
+                        && typeof prop !== 'symbol'
+                    ) {
                         value = this.getNewValueProxy(value)
                     }
                     if (target[prop] === value) {
@@ -739,6 +752,9 @@ export default class Parser extends JSONTag.Parser
     {
         if (value === null) {
             return null
+        }
+        if (value[isProxy]) {
+            return value
         }
         if (JSONTag.getType(value)=='link') {
             let index = this.meta.index.id.get(''+value)
