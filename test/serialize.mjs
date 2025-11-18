@@ -1,5 +1,4 @@
 import JSONTag from '@muze-nl/jsontag'
-import * as odJSONTag from '../src/jsontag.mjs'
 import serialize, {stringify} from '../src/serialize.mjs'
 import {source, isChanged, getBuffer, getIndex, isProxy} from '../src/symbols.mjs'
 import Parser from '../src/parse.mjs'
@@ -41,7 +40,7 @@ tap.test('identity', t => {
 (57)<object class="bar" id="2">{"name":"Bar","children":[~1]}`
 	const parser = new Parser()
 	let root = parser.parse(strData);
-	t.equal(odJSONTag.getAttribute(root.foo[0], 'id'), '1')
+	t.equal(JSONTag.getAttribute(root.foo[0], 'id'), '1')
 	let meta = {}
 	let sab = serialize(root, {meta})
 	t.equal(meta.index.id.get('1'),1)
@@ -289,13 +288,13 @@ tap.test('<undefined>', t => {
 	myparser.immutable = false
 	const data = myparser.parse(buff)
 
-	odJSONTag.setAttribute(data.Doelniveau[0], 'foo', 'bar')
+	JSONTag.setAttribute(data.Doelniveau[0], 'foo', 'bar')
 	t.same(data.Doelniveau[0][isChanged], true)
 	let s = stringify(serialize(data))
 	t.same(s, `(19){"Doelniveau":[~1]}
 (40)<object foo="bar">{"name":"test entity"}`)
 
-	odJSONTag.setAttribute(data.Doelniveau, 'foo', 'bar')
+	JSONTag.setAttribute(data.Doelniveau, 'foo', 'bar')
 	t.equal(data, myparser.meta.resultArray[data[getIndex]])
 	t.equal(data[isProxy], true)
 	t.same(data[isChanged], true)
