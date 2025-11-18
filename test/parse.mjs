@@ -260,3 +260,45 @@ tap.test('handle nested JSONTag links', t => {
 	t.same(odData.foo[0], odData.baz.foo)
 	t.end()
 })
+
+tap.test('access array in object', t => {
+	const dataStr = `{
+    "foo":[
+        <object id="bar">{
+			"name":"bar",
+            "arr":[
+				<object id="baz">{
+					"name":"Baz"
+				}
+            ]
+        }
+    ]
+}`
+	const data = JSONTag.parse(dataStr)
+	const odDataBuf = serialize(data)
+	const parser = new Parser()
+	const odData = parser.parse(odDataBuf)
+	t.ok(Array.isArray(odData.foo[0].arr))
+	t.same(odData.foo[0].arr[0].name, 'Baz')
+	t.end()
+})
+
+tap.test('set value in new array', t => {
+	const dataStr = `
+        <object id="bar">{
+			"name":"bar"
+	    }
+`
+	const data = JSONTag.parse(dataStr)
+	const odDataBuf = serialize(data)
+	const parser = new Parser()
+	parser.immutable = false
+	const odData = parser.parse(odDataBuf)
+	odData.foo = {
+		arr: []
+	}
+	odData.foo.arr[0] = 'bar'
+	odData.foo.bar = 'also bar'
+	t.same(odData.foo.arr[0], 'bar')
+	t.end()
+})

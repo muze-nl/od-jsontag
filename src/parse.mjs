@@ -103,7 +103,7 @@ export default class Parser extends JSONTag.Parser
                     if (this.meta.access && !this.meta.access(target, prop)) {
                         return undefined
                     }
-                    const type = JSONTag.getType(arg)
+                    const type = JSONTag.getType(value)
                     if ((type==='object' || type==='link')
                         && typeof prop !== 'symbol'
                     ) {
@@ -158,7 +158,7 @@ export default class Parser extends JSONTag.Parser
                     if (this.meta.access && !this.meta.access(target, prop, 'set')) {
                         return undefined
                     }
-                    const type = JSONTag.getType(arg)
+                    const type = JSONTag.getType(value)
                     if ((type==='object' || type==='link')
                         && typeof prop !== 'symbol'
                     ) {
