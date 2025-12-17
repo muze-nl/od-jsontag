@@ -36,6 +36,6 @@
 		"LICENSE"
 	],
 	"dependencies": {
-		"@muze-nl/jsontag": "^0.10.2"
+		"@muze-nl/jsontag": "^0.10.3"
 	}
 }
