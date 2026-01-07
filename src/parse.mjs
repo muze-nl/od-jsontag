@@ -517,9 +517,10 @@ export default class Parser extends JSONTag.Parser
             if (this.ch==='\\') {
                 this.next()
                 if (this.ch==='u') {
+                    uffff = 0
                     for (i=0; i<4; i++) {
                         hex = parseInt(this.next(), 16)
-                        if (!this.isFinite(hex)) {
+                        if (!isFinite(hex)) {
                             break
                         }
                         uffff = uffff * 16 + hex

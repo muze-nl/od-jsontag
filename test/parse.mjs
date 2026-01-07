@@ -93,6 +93,14 @@ tap.test('unicode', t => {
 	t.end()
 })
 
+tap.test('encoded unicode', t => {
+	let strData = `(13){"foo":"\\u20aca"}` // >16bit unicode characters 
+	let sab = stringToSAB(strData)
+	let root = parser.parse(sab)
+	t.equal(root.foo, '€a')
+	t.end()
+})
+
 tap.test('access', t => {
 	let strData = `(64)<object class="foo" id="1">{"name":"Foo",#"nonEnumerable":"bar"}	`
 	let access = (entity, property) => {
