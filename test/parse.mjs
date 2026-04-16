@@ -1,5 +1,5 @@
 import JSONTag from '@muze-nl/jsontag'
-import {isChanged, source, getBuffer, getIndex, isProxy, proxyType} from '../src/symbols.mjs'
+import {isChanged, source, getBuffer, getIndex, isProxy, proxyType, previous} from '../src/symbols.mjs'
 import Parser from '../src/parse.mjs'
 import serialize, {stringify} from '../src/serialize.mjs'
 import tap from 'tap'
@@ -308,5 +308,24 @@ tap.test('set value in new array', t => {
 	odData.foo.arr[0] = 'bar'
 	odData.foo.bar = 'also bar'
 	t.same(odData.foo.arr[0], 'bar')
+	t.end()
+})
+
+tap.test('previous value', t => {
+	const dataStr = `
+        <object id="bar">{
+			"name":"bar"
+	    }
+`
+	const data = JSONTag.parse(dataStr)
+	const odDataBuf = serialize(data)
+	const parser = new Parser()
+	parser.immutable = false
+	const odData = parser.parse(odDataBuf)
+	odData.name = 'baz'
+	odData.foo = 'bar'
+	t.same(odData.name, 'baz')
+	t.same(odData[previous].name, 'bar')
+	t.same(odData[previous].foo, undefined)
 	t.end()
 })

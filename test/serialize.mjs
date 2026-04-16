@@ -304,3 +304,20 @@ tap.test('<undefined>', t => {
 (40)<object foo="bar">{"name":"test entity"}`)
 	t.end()
 })
+
+tap.test('previous not serialized', t => {
+	const dataStr = `
+        <object id="bar">{
+			"name":"bar"
+	    }
+`
+	const data = JSONTag.parse(dataStr)
+	const odDataBuf = serialize(data)
+	const parser = new Parser()
+	parser.immutable = false
+	const odData = parser.parse(odDataBuf)
+	odData.name = 'baz'
+	let s = stringify(serialize(odData))
+	t.same('(31)<object id="bar">{"name":"baz"}', s)
+	t.end()
+})

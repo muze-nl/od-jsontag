@@ -1,7 +1,7 @@
 import JSONTag from '@muze-nl/jsontag';
 import Null from '@muze-nl/jsontag/src/lib/Null.mjs'
 import serialize from './serialize.mjs'
-import {source,isProxy,proxyType,getBuffer,getIndex,isChanged,isParsed,position,parent,resultSet} from './symbols.mjs'
+import {source,isProxy,proxyType,getBuffer,getIndex,isChanged,isParsed,position,parent,resultSet, previous} from './symbols.mjs'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -233,7 +233,10 @@ export default class Parser extends JSONTag.Parser
                     }
                     if (target[prop] === value) {
                         return true
-                    } 
+                    }
+                    if (!target[previous]) {
+                        target[previous] = JSONTag.clone(target)
+                    }
                     target[prop] = value
                     target[isChanged] = true
                     target[parent][isChanged] = true
@@ -251,6 +254,9 @@ export default class Parser extends JSONTag.Parser
                     //when stringifying resultArray again
                     if (typeof target[prop] === 'undefined') {
                         return true
+                    }
+                    if (!target[previous]) {
+                        target[previous] = JSONTag.clone(target)
                     }
                     delete target[prop]
                     target[isChanged] = true
@@ -338,6 +344,9 @@ export default class Parser extends JSONTag.Parser
                     if (target[prop] === value) {
                         return true
                     }
+                    if (!target[previous]) {
+                        target[previous] = JSONTag.clone(target)
+                    }
                     target[prop] = value
                     target[isChanged] = true
                     return true
@@ -352,6 +361,9 @@ export default class Parser extends JSONTag.Parser
                     this.firstParse(target)
                     if (typeof target[prop] === 'undefined') {
                         return true
+                    }
+                    if (!target[previous]) {
+                        target[previous] = JSONTag.clone(target)
                     }
                     delete target[prop]
                     target[isChanged] = true
@@ -373,6 +385,9 @@ export default class Parser extends JSONTag.Parser
                         return undefined
                     }
                     this.firstParse(target)
+                    if (!target[previous]) {
+                        target[previous] = JSONTag.clone(target)
+                    }
                     target[isChanged] = true
                     return Object.defineProperty(target, prop, descriptor)
                 },
