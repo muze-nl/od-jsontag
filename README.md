@@ -229,6 +229,9 @@ Useful options:
 
 See [docs/reference.md](docs/reference.md) for the API reference.
 
+For benchmark results and memory tradeoffs compared with standard JSON, see
+[docs/performance.md](docs/performance.md).
+
 ## JSONTag compatibility
 
 `od-jsontag` builds on [`@muze-nl/jsontag`](https://github.com/muze-nl/jsontag/).
@@ -244,6 +247,7 @@ inside the line format:
 
 - [API reference](docs/reference.md)
 - [Data format](docs/data-format.md)
+- [Performance tradeoffs](docs/performance.md)
 
 ## Development
 
