@@ -165,7 +165,7 @@ tap.test('parse indexed ranges lazily falls back when mutable', t => {
 	t.end()
 })
 
-tap.test('parse indexed mixed ranges materialize references', t => {
+tap.test('parse indexed mixed ranges lazily', t => {
 	let strData = `{"foo":[0,~1-2,3]}
 {"name":"Foo"}
 {"name":"Bar"}`
@@ -173,10 +173,75 @@ tap.test('parse indexed mixed ranges materialize references', t => {
 	let root = indexedParser.parse(stringToSAB(strData), JSON.stringify(lineIndex(strData)))
 	let foo = root.foo
 	t.equal(foo.length, 4)
+	t.equal(indexedParser.meta.resultArray[1], undefined)
+	t.equal(indexedParser.meta.resultArray[2], undefined)
 	t.equal(foo[0], 0)
 	t.equal(foo[1].name, 'Foo')
+	t.equal(indexedParser.meta.resultArray[2], undefined)
 	t.equal(foo[2].name, 'Bar')
 	t.equal(foo[3], 3)
+	t.end()
+})
+
+tap.test('parse indexed array single references lazily', t => {
+	let strData = `{"foo":[~1,~3]}
+{"name":"Foo"}
+{"name":"Unused"}
+{"name":"Bar"}`
+	let indexedParser = new Parser()
+	let root = indexedParser.parse(stringToSAB(strData), JSON.stringify(lineIndex(strData)))
+	let foo = root.foo
+	t.equal(foo.length, 2)
+	t.equal(indexedParser.meta.resultArray[1], undefined)
+	t.equal(indexedParser.meta.resultArray[3], undefined)
+	t.equal(foo[1].name, 'Bar')
+	t.equal(indexedParser.meta.resultArray[1], undefined)
+	t.equal(foo[0].name, 'Foo')
+	t.end()
+})
+
+tap.test('parse indexed lazy array references respect access policy', t => {
+	let strData = `{"foo":[~1]}
+{"name":"Foo"}`
+	let indexedParser = new Parser()
+	indexedParser.meta.access = (object, property, method) => property !== '0' || method !== 'get'
+	let root = indexedParser.parse(stringToSAB(strData), JSON.stringify(lineIndex(strData)))
+	t.equal(root.foo[0], undefined)
+	t.equal(indexedParser.meta.resultArray[1], undefined)
+	t.end()
+})
+
+tap.test('parse indexed arrays with multiple lazy segments', t => {
+	let strData = `{"foo":[~1-2,"middle",~4,~5-6]}
+{"name":"One"}
+{"name":"Two"}
+{"name":"Unused"}
+{"name":"Four"}
+{"name":"Five"}
+{"name":"Six"}`
+	let indexedParser = new Parser()
+	let root = indexedParser.parse(stringToSAB(strData), JSON.stringify(lineIndex(strData)))
+	let foo = root.foo
+	t.equal(foo.length, 6)
+	t.equal(indexedParser.meta.resultArray[1], undefined)
+	t.equal(indexedParser.meta.resultArray[6], undefined)
+	t.same(Object.keys(foo), ['0', '1', '2', '3', '4', '5'])
+	t.same(foo.map(item => item.name || item), ['One', 'Two', 'middle', 'Four', 'Five', 'Six'])
+	t.equal(foo[0], indexedParser.meta.resultArray[1])
+	t.equal(foo[3], indexedParser.meta.resultArray[4])
+	t.end()
+})
+
+tap.test('parse indexed arrays reuse repeated lazy references', t => {
+	let strData = `{"foo":[~1,~1]}
+{"name":"Foo"}`
+	let indexedParser = new Parser()
+	let root = indexedParser.parse(stringToSAB(strData), JSON.stringify(lineIndex(strData)))
+	let foo = root.foo
+	t.equal(indexedParser.meta.resultArray[1], undefined)
+	t.equal(foo[0].name, 'Foo')
+	t.equal(foo[1], foo[0])
+	t.equal(foo[1], indexedParser.meta.resultArray[1])
 	t.end()
 })
 

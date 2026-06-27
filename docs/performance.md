@@ -32,7 +32,8 @@ The short version from the benchmark below:
 - od-jsontag with no index must scan the whole file and create one proxy per
   line, so it is not automatically cheaper.
 - od-jsontag with an index can parse the root much faster. In immutable mode,
-  arrays that are just line ranges are kept lazy too.
+  references inside arrays, including ranges and single references, are kept
+  lazy too.
 - Accessing a small subset can use much less heap than full JSON parsing.
 - File-backed indexed parsing can avoid keeping the data file in memory, at the
   cost of file reads for newly touched lines.
@@ -163,17 +164,18 @@ In the benchmark, the root line contains:
 {"items":[~1-100000]}
 ```
 
-In immutable indexed parsing, od-jsontag keeps this as one lazy range array. It
+In immutable indexed parsing, od-jsontag keeps this as lazy array metadata. It
 does not create 100,000 line-reference objects at root parse time. The array
-knows its start and end line numbers, and each numeric entry creates or reuses
-the matching line proxy only when accessed.
+knows which index ranges point to which line numbers, and each numeric entry
+creates or reuses the matching line proxy only when accessed. The same mechanism
+also applies to mixed arrays with several ranges and individual references.
 
 The indexed root-only case still retains about `7.80 MiB` of heap because it
 must keep:
 
 - the parsed index array;
 - the root object;
-- the root `items` array shell and lazy range metadata.
+- the root `items` array shell and lazy reference metadata.
 
 If you enumerate the whole array with `Object.keys()`, `map()`, or a full
 iteration, the proxies for those entries are created as needed. Mutable parsing

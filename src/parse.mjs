@@ -52,7 +52,7 @@ const isLineReference = function(r)
     return r instanceof LineReference
 }
 
-const lazyRange = Symbol('lazyRange')
+const lazyItems = Symbol('lazyItems')
 
 const getFileDescriptor = function(input)
 {
@@ -231,6 +231,14 @@ export default class Parser extends JSONTag.Parser
                             return 'array'
                         break
                     }
+                    if (this.hasLazyArrayItems(target) && this.isArrayIndex(prop)) {
+                        if (!Object.hasOwn(target, prop) && this.getLazyArrayLine(target, Number(prop)) !== undefined) {
+                            if (this.meta.access && !this.meta.access(target, prop, 'get')) {
+                                return undefined
+                            }
+                            return this.getLazyArrayValue(target, prop)
+                        }
+                    }
                     const value = target?.[prop]
                     if (value instanceof Function) {
                         if (['copyWithin','fill','pop','push','reverse','shift','sort','splice','unshift'].indexOf(prop)!==-1) {
@@ -250,8 +258,6 @@ export default class Parser extends JSONTag.Parser
                             })
                             return value.apply(receiver, args)
                         }
-                    } else if (target[lazyRange] && this.isArrayIndex(prop)) {
-                        return this.getLazyArrayValue(target, prop)
                     } else if (prop===isChanged) {
                         return target[isChanged] || target[parent][isChanged]
                     } else if (prop===source) {
@@ -319,13 +325,13 @@ export default class Parser extends JSONTag.Parser
                     return true
                 },
                 has: (target, prop) => {
-                    if (target[lazyRange] && this.isArrayIndex(prop)) {
-                        return Number(prop) < target.length
+                    if (this.hasLazyArrayItems(target) && this.isArrayIndex(prop)) {
+                        return Object.hasOwn(target, prop) || this.getLazyArrayLine(target, Number(prop)) !== undefined
                     }
                     return prop in target
                 },
                 ownKeys: (target) => {
-                    if (target[lazyRange]) {
+                    if (this.hasLazyArrayItems(target)) {
                         let keys = []
                         for (let index=0; index<target.length; index++) {
                             keys.push(String(index))
@@ -336,9 +342,12 @@ export default class Parser extends JSONTag.Parser
                     return Reflect.ownKeys(target)
                 },
                 getOwnPropertyDescriptor: (target, prop) => {
-                    if (target[lazyRange] && this.isArrayIndex(prop)) {
+                    if (this.hasLazyArrayItems(target) && this.isArrayIndex(prop)) {
                         let index = Number(prop)
-                        if (index >= target.length) {
+                        if (Object.hasOwn(target, prop)) {
+                            return Reflect.getOwnPropertyDescriptor(target, prop)
+                        }
+                        if (this.getLazyArrayLine(target, index) === undefined) {
                             return undefined
                         }
                         return {
@@ -539,25 +548,20 @@ export default class Parser extends JSONTag.Parser
             item = this.value()
             this.checkUnresolved(item, array, array.length)
             if (isSlice(item)) {
-                let lineSlice = this.getLineSlice(item.start, item.end)
-                if (lineSlice[lazyRange] && array.length===0) {
-                    array = lineSlice
+                if (this.meta.lineIndex && this.immutable) {
+                    this.addLazyArrayRange(array, item.start, item.end)
                 } else {
-                    array = array.concat(this.materializeLazyRangeArray(lineSlice))
+                    array = array.concat(this.getLineSlice(item.start, item.end))
                 }
+            } else if (isLineReference(item) && this.meta.lineIndex && this.immutable) {
+                this.addLazyArrayReference(array, item.index)
             } else {
-                if (array[lazyRange]) {
-                    array = this.materializeLazyRangeArray(array)
-                }
                 array.push(item)
             }
             this.whitespace()
             if (this.ch===']') {
                 this.next(']')
                 return array
-            }
-            if (array[lazyRange]) {
-                array = this.materializeLazyRangeArray(array)
             }
             this.next(',')
             this.whitespace()
@@ -917,21 +921,26 @@ export default class Parser extends JSONTag.Parser
     getLazyRangeArray(start, end)
     {
         let arr = []
-        arr.length = end - start
-        arr[lazyRange] = {start, end}
+        this.addLazyArrayRange(arr, start, end)
         return arr
     }
 
-    materializeLazyRangeArray(arr)
+    addLazyArrayReference(arr, line)
     {
-        if (!arr[lazyRange]) {
-            return arr
+        this.addLazyArrayRange(arr, line, line+1)
+    }
+
+    addLazyArrayRange(arr, start, end)
+    {
+        if (!arr[lazyItems]) {
+            arr[lazyItems] = []
         }
-        let result = []
-        for (let line=arr[lazyRange].start; line<arr[lazyRange].end; line++) {
-            result.push(new LineReference(line))
-        }
-        return result
+        arr[lazyItems].push({
+            arrayStart: arr.length,
+            arrayEnd: arr.length + end - start,
+            lineStart: start
+        })
+        arr.length += end - start
     }
 
     isArrayIndex(prop)
@@ -943,15 +952,37 @@ export default class Parser extends JSONTag.Parser
         return Number.isInteger(index) && index >= 0 && String(index) === String(prop)
     }
 
-    getLazyArrayValue(target, prop)
+    hasLazyArrayItems(target)
     {
-        let index = Number(prop)
+        return !!target[lazyItems]?.length
+    }
+
+    getLazyArrayLine(target, index)
+    {
         if (index >= target.length) {
             return undefined
         }
-        let value = target[index]
-        if (typeof value === 'undefined') {
-            value = this.getLineProxy(target[lazyRange].start + index)
+        let ranges = target[lazyItems] || []
+        for (let range of ranges) {
+            if (index >= range.arrayStart && index < range.arrayEnd) {
+                return range.lineStart + index - range.arrayStart
+            }
+        }
+        return undefined
+    }
+
+    getLazyArrayValue(target, prop)
+    {
+        let index = Number(prop)
+        let line = this.getLazyArrayLine(target, index)
+        if (line === undefined) {
+            return undefined
+        }
+        let value
+        if (Object.hasOwn(target, prop)) {
+            value = target[index]
+        } else {
+            value = this.getLineProxy(line)
             target[index] = value
         }
         return value
