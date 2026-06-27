@@ -33,6 +33,20 @@ function lineIndex(strData) {
 	return result
 }
 
+function payloadLineIndex(strData) {
+	const buffer = encoder.encode(strData)
+	return lineIndex(strData).map(([start, end]) => {
+		if (buffer[start] !== 40) {
+			return [start, end]
+		}
+		let payloadStart = start
+		while(payloadStart<end && buffer[payloadStart]!==41) {
+			payloadStart++
+		}
+		return [payloadStart+1, end]
+	})
+}
+
 tap.test('Parse', t => {
 	let s = `(23){"foo":[~1],"bar":[~2]}
 (64)<object class="foo" id="1">{"name":"Foo",#"nonEnumerable":"bar"}
@@ -79,6 +93,22 @@ tap.test('parseSAB with line index', t => {
 	t.equal(indexedParser.meta.resultArray[2], undefined)
 	t.equal(foo[0].children[0].name, 'Bar')
 	t.equal(foo[0].children[0], indexedParser.meta.resultArray[2])
+	t.end()
+})
+
+tap.test('parseSAB with payload-only line index', t => {
+	let strData = `(12){"foo":[~1]}
+(30){"name":"Foo","children":[~2]}
+(14){"name":"Bar"}`
+	let index = payloadLineIndex(strData)
+	let indexedParser = new Parser()
+	let root = indexedParser.parse(stringToSAB(strData), JSON.stringify(index))
+
+	t.equal(index[0][0], 4)
+	t.equal(index[1][0], 21)
+	t.equal(root.foo[0].name, 'Foo')
+	t.equal(indexedParser.meta.resultArray[2], undefined)
+	t.equal(root.foo[0].children[0].name, 'Bar')
 	t.end()
 })
 
