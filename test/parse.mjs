@@ -138,9 +138,45 @@ tap.test('parse indexed ranges lazily', t => {
 	let foo = root.foo
 	t.equal(indexedParser.meta.resultArray[1], undefined)
 	t.equal(indexedParser.meta.resultArray[2], undefined)
+	t.equal(Array.isArray(foo), true)
+	t.equal(foo.length, 2)
+	t.equal(0 in foo, true)
+	t.equal(foo[0].name, 'Foo')
+	t.equal(indexedParser.meta.resultArray[2], undefined)
+	t.equal(foo[1].name, 'Bar')
+	t.same(Object.keys(foo), ['0', '1'])
+	t.end()
+})
+
+tap.test('parse indexed ranges lazily falls back when mutable', t => {
+	let strData = `(14){"foo":[~1-2]}
+(14){"name":"Foo"}
+(14){"name":"Bar"}`
+	let indexedParser = new Parser(undefined, false)
+	let root = indexedParser.parse(stringToSAB(strData), JSON.stringify(lineIndex(strData)))
+	let foo = root.foo
+	t.equal(indexedParser.meta.resultArray[1], undefined)
+	t.equal(indexedParser.meta.resultArray[2], undefined)
 	t.equal(foo.length, 2)
 	t.equal(foo[0].name, 'Foo')
-	t.equal(foo[1].name, 'Bar')
+	t.equal(indexedParser.meta.resultArray[2], undefined)
+	foo.push({name: 'Baz'})
+	t.equal(foo[2].name, 'Baz')
+	t.end()
+})
+
+tap.test('parse indexed mixed ranges materialize references', t => {
+	let strData = `{"foo":[0,~1-2,3]}
+{"name":"Foo"}
+{"name":"Bar"}`
+	let indexedParser = new Parser()
+	let root = indexedParser.parse(stringToSAB(strData), JSON.stringify(lineIndex(strData)))
+	let foo = root.foo
+	t.equal(foo.length, 4)
+	t.equal(foo[0], 0)
+	t.equal(foo[1].name, 'Foo')
+	t.equal(foo[2].name, 'Bar')
+	t.equal(foo[3], 3)
 	t.end()
 })
 

@@ -133,6 +133,12 @@ Operations that may trigger parsing include:
 
 Array properties are also wrapped in proxies so mutations can be tracked.
 
+In immutable indexed parsing, an array that contains only a line range such as
+`[~1-100000]` is represented as one lazy array proxy. Reading `items[0]` creates
+or reuses the proxy for line `1`; reading `items[99999]` creates or reuses the
+proxy for line `100000`. Mutable parsing currently materializes line-reference
+placeholders so existing mutation tracking semantics remain intact.
+
 ## Mutability and change tracking
 
 By default the parser is immutable:

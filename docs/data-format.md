@@ -158,7 +158,10 @@ Example:
 (16){"name":"Three"}
 ```
 
-The parser expands the range into an array with three references.
+Without an offset index, or when mutable parsing is enabled, the parser expands
+the range into an array with three references. With immutable indexed parsing, a
+range that makes up the whole array can stay lazy: the array stores the range,
+and each entry creates its referenced line proxy only when that entry is read.
 
 ## Non-enumerable properties
 

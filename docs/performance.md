@@ -31,7 +31,8 @@ The short version from the benchmark below:
 - `JSON.parse()` is very fast for full parse.
 - od-jsontag with no index must scan the whole file and create one proxy per
   line, so it is not automatically cheaper.
-- od-jsontag with an index can parse the root much faster.
+- od-jsontag with an index can parse the root much faster. In immutable mode,
+  arrays that are just line ranges are kept lazy too.
 - Accessing a small subset can use much less heap than full JSON parsing.
 - File-backed indexed parsing can avoid keeping the data file in memory, at the
   cost of file reads for newly touched lines.
@@ -54,8 +55,8 @@ Compared formats:
 - od-jsontag backed by a `SharedArrayBuffer`, with a parsed line index.
 - od-jsontag backed by a file descriptor, with a parsed line index.
 
-Each row below is the median of five isolated Node processes run with
-`--expose-gc`. Memory is measured with `process.memoryUsage()` after explicit GC.
+Rows below are representative isolated Node process runs with `--expose-gc`.
+Memory is measured with `process.memoryUsage()` after explicit GC.
 
 The measurements are not universal. They are a snapshot on one machine and one
 data shape. They are still useful because they show the relative shape of the
@@ -86,8 +87,8 @@ node --expose-gc benchmark/performance.mjs --scenario=od_sab_index_access --obje
 node --expose-gc benchmark/performance.mjs --scenario=od_file_index_access --objects=100000 --accessed=1000
 ```
 
-Single-scenario mode prints one JSON row. The tables below were prepared from
-median single-scenario runs.
+Single-scenario mode prints one JSON row. Use multiple runs on your own machine
+when you need stable numbers for a specific deployment.
 
 ## Input Size
 
@@ -105,14 +106,14 @@ runtime heap cost.
 
 ## Time Results
 
-| Scenario | Work done | Median time |
+| Scenario | Work done | Time |
 | --- | --- | ---: |
 | `JSON.parse()` | Parse full dataset, then read 1,000 objects | 30.03 ms |
 | `v8.deserialize()` | Decode full dataset, then read 1,000 objects | 66.73 ms |
 | od-jsontag SAB, no index | Scan all lines, create proxies, parse root | 39.58 ms |
-| od-jsontag SAB, indexed | Parse root only | 3.34 ms |
-| od-jsontag SAB, indexed | Parse root and read 1,000 objects | 16.05 ms |
-| od-jsontag file, indexed | Parse root and read 1,000 objects | 17.88 ms |
+| od-jsontag SAB, indexed | Parse root only | 1.40 ms |
+| od-jsontag SAB, indexed | Parse root and read 1,000 objects | 14.96 ms |
+| od-jsontag file, indexed | Parse root and read 1,000 objects | 16.39 ms |
 
 What this means:
 
@@ -136,15 +137,15 @@ the input representation kept alive by the benchmark.
 | `JSON.parse()` full dataset | 78.52 MiB | 26.13 MiB | 0 MiB | 0 MiB |
 | `v8.deserialize()` full dataset | 74.91 MiB | 18.24 MiB | 0 MiB | 9.44 MiB |
 | od-jsontag SAB, no index | 79.44 MiB | 18.19 MiB | 10.66 MiB | 0 MiB |
-| od-jsontag SAB, indexed root only | 71.86 MiB | 10.85 MiB | 10.66 MiB | 0 MiB |
-| od-jsontag SAB, indexed + 1,000 objects | 73.13 MiB | 11.58 MiB | 10.76 MiB | 0.11 MiB |
-| od-jsontag file, indexed + 1,000 objects | 63.09 MiB | 11.59 MiB | 0.11 MiB | 0.11 MiB |
+| od-jsontag SAB, indexed root only | 72.73 MiB | 7.80 MiB | 10.66 MiB | 0 MiB |
+| od-jsontag SAB, indexed + 1,000 objects | 73.75 MiB | 8.54 MiB | 10.76 MiB | 0.11 MiB |
+| od-jsontag file, indexed + 1,000 objects | 62.96 MiB | 8.55 MiB | 0.11 MiB | 0.11 MiB |
 
 The most important comparison is heap usage:
 
 - JSON needs about `26.13 MiB` of heap after parsing the dataset.
 - od-jsontag SAB with an index and 1,000 accessed objects needs about
-  `11.58 MiB` of heap, plus the shared byte buffer.
+  `8.54 MiB` of heap, plus the shared byte buffer.
 - od-jsontag file-backed access has similar heap use but does not retain the
   data file as an in-memory `ArrayBuffer`.
 
@@ -162,20 +163,22 @@ In the benchmark, the root line contains:
 {"items":[~1-100000]}
 ```
 
-Parsing the root creates an `items` array with 100,000 lazy references. Those
-references are small, but they are still JavaScript objects. The parsed line
-index is also a JavaScript array.
+In immutable indexed parsing, od-jsontag keeps this as one lazy range array. It
+does not create 100,000 line-reference objects at root parse time. The array
+knows its start and end line numbers, and each numeric entry creates or reuses
+the matching line proxy only when accessed.
 
-That is why the indexed root-only case still retains about `10.85 MiB` of heap:
+The indexed root-only case still retains about `7.80 MiB` of heap because it
+must keep:
 
 - the parsed index array;
 - the root object;
-- the root `items` array;
-- lazy line-reference placeholders.
+- the root `items` array shell and lazy range metadata.
 
-This is an important design consideration. od-jsontag avoids parsing object
-bodies, but it still materializes the shape of whatever the root line contains.
-For very large root arrays, the root itself can become meaningful overhead.
+If you enumerate the whole array with `Object.keys()`, `map()`, or a full
+iteration, the proxies for those entries are created as needed. Mutable parsing
+currently falls back to the older materialized line-reference array so mutation
+tracking can keep its existing behavior.
 
 ## File-backed vs SharedArrayBuffer-backed
 
