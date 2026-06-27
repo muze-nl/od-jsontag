@@ -16,6 +16,22 @@ function stringToSAB(strData) {
 	return uint8sab
 }
 
+function lineIndex(strData) {
+	const buffer = encoder.encode(strData)
+	let result = []
+	let start = 0
+	for (let i=0; i<buffer.length; i++) {
+		if (buffer[i]===10) {
+			result.push([start, i])
+			start = i+1
+		}
+	}
+	if (start<buffer.length) {
+		result.push([start, buffer.length])
+	}
+	return result
+}
+
 tap.test('Parse', t => {
 	let s = `(23){"foo":[~1],"bar":[~2]}
 (64)<object class="foo" id="1">{"name":"Foo",#"nonEnumerable":"bar"}
@@ -46,6 +62,22 @@ tap.test('parseSAB', t => {
 	let root = parser.parse(sab)
 	t.equal(root.foo[0].name, 'Foo')
 	t.equal(root.bar[0].name, 'Bar')
+	t.end()
+})
+
+tap.test('parseSAB with line index', t => {
+	let strData = `(12){"foo":[~1]}
+(29){"name":"Foo","children":[~2]}
+(14){"name":"Bar"}`
+	let indexedParser = new Parser()
+	let root = indexedParser.parse(stringToSAB(strData), lineIndex(strData))
+
+	let foo = root.foo
+	t.equal(indexedParser.meta.resultArray[1], undefined)
+	t.equal(foo[0][getIndex], 1)
+	t.equal(indexedParser.meta.resultArray[2], undefined)
+	t.equal(foo[0].children[0].name, 'Bar')
+	t.equal(foo[0].children[0], indexedParser.meta.resultArray[2])
 	t.end()
 })
 
@@ -327,5 +359,35 @@ tap.test('previous value', t => {
 	t.same(odData.name, 'baz')
 	t.same(odData[previous].name, 'bar')
 	t.same(odData[previous].foo, undefined)
+	t.end()
+})
+
+tap.test('types', t => {
+	const dataStr = `{
+		"uuid": <uuid>"9408e2c7-8f6d-4c7a-8733-6fd50b791c86",
+		"time": <time>"12:30:45",
+		"date": <date>"1972-09-20",
+		"datetime": <datetime>"1972-09-20 12:30:45",
+		"datetime2": <datetime>"1972-09-20T12:30:45.10Z",
+		"datetime3": <datetime>"1972-09-20t12:30:45.10z",
+		"datetime3": <datetime>"1972-09-20 12:30",
+		"decimal": <decimal>"1.0000001",
+		"money": <money>"EUR$123.99",
+		"link": <link>"https://www.muze.nl/",
+		"url": <url>"https://www.example.org/",
+		"text": <text>"This is a longer text",
+		"blob": <blob>"Should probably be base64 encoded, but hey",
+		"color": <color>"hsl(360, 100%, 50%)",
+		"email": <email>"auke@muze.nl",
+		"hash": <hash>"Qmbq6Su7LzgYYgfQBzJUdXjgDUZZKxt4NSs4tbYwvfH8Wd",
+		"phone": <phone>"+31612345678",
+		"int": <int>255,
+		"uint": <uint>255
+	}`
+	const data = JSONTag.parse(dataStr)
+	const odDataBuf = serialize(data)
+	const parser = new Parser()
+	const odData = parser.parse(odDataBuf)
+	t.same(odData.url, "https://www.example.org/")
 	t.end()
 })

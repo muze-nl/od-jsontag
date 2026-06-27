@@ -38,6 +38,19 @@ const isSlice = function(r)
     return r instanceof Slice
 }
 
+class LineReference
+{
+    constructor(index)
+    {
+        this.index = index
+    }
+}
+
+const isLineReference = function(r)
+{
+    return r instanceof LineReference
+}
+
 const resetObject = function(ob)
 {
     delete ob[Symbol['JSONTag:Type']]
@@ -208,6 +221,9 @@ export default class Parser extends JSONTag.Parser
                         if (this.meta.access && !this.meta.access(target, prop, 'get')) {
                             return undefined
                         }
+                        if (isLineReference(value)) {
+                            return this.getLineProxy(value.index)
+                        }
                         if (Array.isArray(value)) {
                             return this.getArrayProxy(value, target)
                         }
@@ -306,6 +322,9 @@ export default class Parser extends JSONTag.Parser
                         default:
                             if (this.meta.access && !this.meta.access(target, prop, 'get')) {
                                 return undefined
+                            }
+                            if (isLineReference(target[prop])) {
+                                return this.getLineProxy(target[prop].index)
                             }
                             if (Array.isArray(target[prop])) {
                                 return this.getArrayProxy(target[prop], target)
@@ -448,7 +467,7 @@ export default class Parser extends JSONTag.Parser
             item = this.value()
             this.checkUnresolved(item, array, array.length)
             if (isSlice(item)) {
-                array = array.concat(this.meta.resultArray.slice(item.start, item.end))
+                array = array.concat(this.getLineSlice(item.start, item.end))
             } else {
                 array.push(item)
             }
@@ -624,7 +643,10 @@ export default class Parser extends JSONTag.Parser
             if (isSlice(vOffset)) {
                 return vOffset
             }
-            return this.meta.resultArray[vOffset]
+            if (this.meta.lineIndex) {
+                return new LineReference(vOffset)
+            }
+            return this.getLineProxy(vOffset)
         }
         if (this.ch==='<') {
             tagOb = this.tag()
@@ -728,6 +750,68 @@ export default class Parser extends JSONTag.Parser
         return result
     }
 
+    indexedValueProxy(index)
+    {
+        let indexedPosition = this.meta.lineIndex?.[index]
+        if (!indexedPosition) {
+            this.error('Missing indexed position for line '+index)
+        }
+
+        let [start, end] = indexedPosition
+        if (this.input[start] === 40) {
+            let length = ''
+            start++
+            while(start<end && this.input[start]>=48 && this.input[start]<=57) {
+                length += String.fromCharCode(this.input[start])
+                start++
+            }
+            if (this.input[start] !== 41) {
+                this.error('Syntax error: not a length')
+            }
+            start++
+            end = start + parseInt(length)
+        }
+
+        let cache = {}
+        cache[getIndex] = index
+        cache[isChanged] = false
+        cache[isParsed] = false
+        cache[position] = {
+            input: this.input,
+            start,
+            end
+        }
+        let result = new Proxy(cache, this.handlers.defaultHandler)
+        this.cachedProxies.set(cache, result)
+        this.meta.lineTargets[index] = cache
+        return result
+    }
+
+    getLineProxy(index)
+    {
+        let result = this.meta.resultArray[index]
+        if (!this.meta.lineIndex) {
+            return result
+        }
+        if (!result) {
+            result = this.indexedValueProxy(index)
+            this.meta.resultArray[index] = result
+        }
+        return result
+    }
+
+    getLineSlice(start, end)
+    {
+        if (!this.meta.lineIndex) {
+            return this.meta.resultArray.slice(start, end)
+        }
+        let result = []
+        for (let line=start; line<end; line++) {
+            result.push(new LineReference(line))
+        }
+        return result
+    }
+
     makeChildProxies(parent)
     {
         Object.entries(parent).forEach(([key,entry]) => {
@@ -788,7 +872,7 @@ export default class Parser extends JSONTag.Parser
         return result
     }
 
-    parse(input)
+    parse(input, lineIndex)
     {
         if (typeof input == 'string' || input instanceof String) {
             input = stringToSAB(input)
@@ -803,6 +887,16 @@ export default class Parser extends JSONTag.Parser
         this.ch = ' '
         this.at = 0
         this.input = input
+
+        if (lineIndex) {
+            this.meta.lineIndex = lineIndex
+            this.meta.lineTargets = []
+            let root = this.getLineProxy(0)
+            this.firstParse(this.meta.lineTargets[0])
+            return root
+        }
+        delete this.meta.lineIndex
+        delete this.meta.lineTargets
 
         let line = 0
         while(this.ch && this.at<this.input.length) {
