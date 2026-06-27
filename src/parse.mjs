@@ -1,5 +1,6 @@
 import JSONTag from '@muze-nl/jsontag';
 import Null from '@muze-nl/jsontag/src/lib/Null.mjs'
+import {readFileSync, readSync} from 'node:fs'
 import serialize from './serialize.mjs'
 import {source,isProxy,proxyType,getBuffer,getIndex,isChanged,isParsed,position,parent,resultSet, previous} from './symbols.mjs'
 
@@ -49,6 +50,40 @@ class LineReference
 const isLineReference = function(r)
 {
     return r instanceof LineReference
+}
+
+const getFileDescriptor = function(input)
+{
+    if (Number.isInteger(input)) {
+        return input
+    }
+    if (Number.isInteger(input?.fd)) {
+        return input.fd
+    }
+    return undefined
+}
+
+const parseLineIndex = function(lineIndex)
+{
+    if (Array.isArray(lineIndex)) {
+        return lineIndex
+    }
+    if (lineIndex instanceof Uint8Array) {
+        lineIndex = decoder.decode(lineIndex)
+    } else if (typeof getFileDescriptor(lineIndex) !== 'undefined') {
+        lineIndex = readFileSync(getFileDescriptor(lineIndex), 'utf8')
+    } else if (typeof lineIndex == 'string' || lineIndex instanceof String) {
+        let strIndex = ''+lineIndex
+        lineIndex = strIndex.trimStart()[0]=='['
+            ? strIndex
+            : readFileSync(strIndex, 'utf8')
+    }
+
+    let result = JSON.parse(lineIndex)
+    if (!Array.isArray(result)) {
+        throw new Error('line index must be a JSON array')
+    }
+    return result
 }
 
 const resetObject = function(ob)
@@ -758,14 +793,18 @@ export default class Parser extends JSONTag.Parser
         }
 
         let [start, end] = indexedPosition
-        if (this.input[start] === 40) {
+        let input = this.indexedInput(start, end)
+        start = 0
+        end = input.length
+
+        if (input[start] === 40) {
             let length = ''
             start++
-            while(start<end && this.input[start]>=48 && this.input[start]<=57) {
-                length += String.fromCharCode(this.input[start])
+            while(start<end && input[start]>=48 && input[start]<=57) {
+                length += String.fromCharCode(input[start])
                 start++
             }
-            if (this.input[start] !== 41) {
+            if (input[start] !== 41) {
                 this.error('Syntax error: not a length')
             }
             start++
@@ -777,7 +816,7 @@ export default class Parser extends JSONTag.Parser
         cache[isChanged] = false
         cache[isParsed] = false
         cache[position] = {
-            input: this.input,
+            input,
             start,
             end
         }
@@ -785,6 +824,18 @@ export default class Parser extends JSONTag.Parser
         this.cachedProxies.set(cache, result)
         this.meta.lineTargets[index] = cache
         return result
+    }
+
+    indexedInput(start, end)
+    {
+        let indexedSource = this.meta.indexInput
+        let fd = getFileDescriptor(indexedSource)
+        if (typeof fd !== 'undefined') {
+            let buffer = new Uint8Array(end-start)
+            readSync(fd, buffer, 0, buffer.length, start)
+            return buffer
+        }
+        return indexedSource.slice(start, end)
     }
 
     getLineProxy(index)
@@ -877,7 +928,8 @@ export default class Parser extends JSONTag.Parser
         if (typeof input == 'string' || input instanceof String) {
             input = stringToSAB(input)
         }
-        if (!(input instanceof Uint8Array)) {
+        let inputIsReadable = input instanceof Uint8Array || typeof getFileDescriptor(input) !== 'undefined'
+        if (!(input instanceof Uint8Array) && !(lineIndex && inputIsReadable)) {
             this.error('parse only accepts Uint8Array or String as input')
         }
         if (!this.meta.resultArray) {
@@ -889,13 +941,15 @@ export default class Parser extends JSONTag.Parser
         this.input = input
 
         if (lineIndex) {
-            this.meta.lineIndex = lineIndex
+            this.meta.lineIndex = parseLineIndex(lineIndex)
+            this.meta.indexInput = input
             this.meta.lineTargets = []
             let root = this.getLineProxy(0)
             this.firstParse(this.meta.lineTargets[0])
             return root
         }
         delete this.meta.lineIndex
+        delete this.meta.indexInput
         delete this.meta.lineTargets
 
         let line = 0

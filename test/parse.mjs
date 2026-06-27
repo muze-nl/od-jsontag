@@ -3,6 +3,7 @@ import {isChanged, source, getBuffer, getIndex, isProxy, proxyType, previous} fr
 import Parser from '../src/parse.mjs'
 import serialize, {stringify} from '../src/serialize.mjs'
 import tap from 'tap'
+import {closeSync, openSync, writeFileSync} from 'node:fs'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -67,10 +68,10 @@ tap.test('parseSAB', t => {
 
 tap.test('parseSAB with line index', t => {
 	let strData = `(12){"foo":[~1]}
-(29){"name":"Foo","children":[~2]}
+(30){"name":"Foo","children":[~2]}
 (14){"name":"Bar"}`
 	let indexedParser = new Parser()
-	let root = indexedParser.parse(stringToSAB(strData), lineIndex(strData))
+	let root = indexedParser.parse(stringToSAB(strData), JSON.stringify(lineIndex(strData)))
 
 	let foo = root.foo
 	t.equal(indexedParser.meta.resultArray[1], undefined)
@@ -78,6 +79,31 @@ tap.test('parseSAB with line index', t => {
 	t.equal(indexedParser.meta.resultArray[2], undefined)
 	t.equal(foo[0].children[0].name, 'Bar')
 	t.equal(foo[0].children[0], indexedParser.meta.resultArray[2])
+	t.end()
+})
+
+tap.test('parse file descriptor with line index', t => {
+	let strData = `(12){"foo":[~1]}
+(30){"name":"Foo","children":[~2]}
+(14){"name":"Bar"}`
+	let path = `/tmp/od-jsontag-indexed-${process.pid}.odjt`
+	let indexPath = `/tmp/od-jsontag-indexed-${process.pid}.json`
+	writeFileSync(path, strData)
+	writeFileSync(indexPath, JSON.stringify(lineIndex(strData)))
+	let fd = openSync(path, 'r')
+	let indexedParser = new Parser()
+	let root
+	try {
+		root = indexedParser.parse(fd, indexPath)
+		let foo = root.foo
+		t.equal(indexedParser.meta.resultArray[1], undefined)
+		t.equal(foo[0].name, 'Foo')
+		t.equal(indexedParser.meta.resultArray[2], undefined)
+		t.equal(foo[0].children[0].name, 'Bar')
+		t.equal(foo[0].children[0], indexedParser.meta.resultArray[2])
+	} finally {
+		closeSync(fd)
+	}
 	t.end()
 })
 
