@@ -107,6 +107,156 @@ tap.test('parse file descriptor with line index', t => {
 	t.end()
 })
 
+tap.test('parse JSON index document variants', t => {
+	let strData = `(12){"foo":[~1]}
+(14){"name":"Foo"}`
+	let index = JSON.stringify(lineIndex(strData))
+	let uint8Index = encoder.encode(index)
+	let indexedParser = new Parser()
+	let root = indexedParser.parse(stringToSAB(strData), uint8Index)
+	t.equal(root.foo[0].name, 'Foo')
+
+	let path = `/tmp/od-jsontag-index-object-${process.pid}.json`
+	writeFileSync(path, index)
+	let fd = openSync(path, 'r')
+	try {
+		indexedParser = new Parser()
+		root = indexedParser.parse(stringToSAB(strData), {fd})
+		t.equal(root.foo[0].name, 'Foo')
+	} finally {
+		closeSync(fd)
+	}
+	t.end()
+})
+
+tap.test('parse indexed ranges lazily', t => {
+	let strData = `(14){"foo":[~1-2]}
+(14){"name":"Foo"}
+(14){"name":"Bar"}`
+	let indexedParser = new Parser()
+	let root = indexedParser.parse(stringToSAB(strData), JSON.stringify(lineIndex(strData)))
+	let foo = root.foo
+	t.equal(indexedParser.meta.resultArray[1], undefined)
+	t.equal(indexedParser.meta.resultArray[2], undefined)
+	t.equal(foo.length, 2)
+	t.equal(foo[0].name, 'Foo')
+	t.equal(foo[1].name, 'Bar')
+	t.end()
+})
+
+tap.test('parse invalid public inputs', t => {
+	t.throws(() => new Parser().parse(12))
+	t.throws(() => new Parser().parse('(2]{}'))
+	t.throws(() => Object.keys(new Parser().parse('(15){"__proto__":1}')))
+	t.throws(() => Object.keys(new Parser().parse('(6){"a":1')))
+	t.throws(() => Object.keys(new Parser().parse('(6){"a":"')))
+	t.throws(() => new Parser().parse('(2)[]', '{}'))
+	t.throws(() => new Parser().parse(stringToSAB('(8){"foo":~1}'), JSON.stringify([[0, 12]])))
+	t.throws(() => new Parser().parse(stringToSAB('(8){"foo":~1}(8]{"x":1}'), JSON.stringify([[0, 12], [12, 20]])).foo)
+	t.end()
+})
+
+tap.test('parse typed and numeric edge values', t => {
+	let data = new Parser().parse('(13){"value":-3}')
+	t.equal(data.value, -3)
+	t.throws(() => Object.keys(new Parser().parse('(10)<array>{}')))
+	t.throws(() => Object.keys(new Parser().parse('(10)<object>[]')))
+	t.end()
+})
+
+tap.test('empty containers and tagged nulls', t => {
+	let emptyObject = new Parser().parse('(11){"ob":{}}')
+	t.same(Object.keys(emptyObject.ob), [])
+	let emptyArray = new Parser().parse('(10){"arr":[]}')
+	t.same(emptyArray.arr.length, 0)
+	let taggedNull = new Parser().parse('(13)<object>null')
+	t.same(JSONTag.getType(taggedNull), 'object')
+	t.end()
+})
+
+tap.test('object operators and access policies', t => {
+	let mutableParser = new Parser()
+	mutableParser.immutable = false
+	let root = mutableParser.parse('(29){"name":"Foo","arr":["a","b"]}')
+	t.equal('name' in root, true)
+	t.equal('missing' in root, false)
+	t.equal(delete root.missing, true)
+	t.equal(delete root.name, true)
+	t.equal(root.name, undefined)
+	t.throws(() => Object.setPrototypeOf(root, {}))
+	Object.defineProperty(root, 'hidden', {
+		value: 'secret',
+		enumerable: false,
+		configurable: true,
+		writable: true
+	})
+	t.equal(root.hidden, 'secret')
+	t.same(Object.getOwnPropertyDescriptor(root, 'hidden').enumerable, false)
+
+	let deniedParser = new Parser()
+	deniedParser.immutable = false
+	deniedParser.meta.access = (object, property, method) => method !== 'set'
+	let deniedRoot = deniedParser.parse('(14){"name":"Foo"}')
+	t.equal(Reflect.set(deniedRoot, 'name', 'Bar'), false)
+	t.equal(deniedRoot.name, 'Foo')
+
+	deniedParser = new Parser()
+	deniedParser.immutable = false
+	deniedParser.meta.access = (object, property, method) => method !== 'deleteProperty'
+	deniedRoot = deniedParser.parse('(14){"name":"Foo"}')
+	t.equal(Reflect.deleteProperty(deniedRoot, 'name'), false)
+	t.equal(deniedRoot.name, 'Foo')
+
+	deniedParser = new Parser()
+	deniedParser.immutable = false
+	deniedParser.meta.access = (object, property, method) => method !== 'defineProperty'
+	deniedRoot = deniedParser.parse('(14){"name":"Foo"}')
+	t.equal(Reflect.defineProperty(deniedRoot, 'hidden', {value: true}), false)
+
+	deniedParser = new Parser()
+	deniedParser.meta.access = (object, property, method) => method !== 'has'
+	deniedRoot = deniedParser.parse('(14){"name":"Foo"}')
+	t.equal('name' in deniedRoot, false)
+
+	let immutableRoot = new Parser().parse('(14){"name":"Foo"}')
+	t.throws(() => {
+		delete immutableRoot.name
+	})
+	t.throws(() => {
+		Object.defineProperty(immutableRoot, 'hidden', {value: true})
+	})
+	t.end()
+})
+
+tap.test('array operators and access policies', t => {
+	let mutableParser = new Parser()
+	mutableParser.immutable = false
+	let root = mutableParser.parse('(19){"arr":["a","b"]}')
+	t.equal(root.arr[source][0], 'a')
+	t.equal(delete root.arr[99], true)
+	t.equal(delete root.arr[0], true)
+	t.equal(root.arr[0], undefined)
+
+	let deniedParser = new Parser()
+	deniedParser.immutable = false
+	deniedParser.meta.access = (object, property, method) => property !== '0'
+	root = deniedParser.parse('(19){"arr":["a","b"]}')
+	t.equal(root.arr[0], undefined)
+	t.equal(Reflect.set(root.arr, '0', 'x'), false)
+	t.equal(Reflect.deleteProperty(root.arr, '0'), false)
+
+	let immutableParser = new Parser()
+	root = immutableParser.parse('(19){"arr":["a","b"]}')
+	t.throws(() => root.arr.reverse())
+	t.throws(() => {
+		root.arr[0] = 'x'
+	})
+	t.throws(() => {
+		delete root.arr[0]
+	})
+	t.end()
+})
+
 tap.test('immutable', t => {
 	let strData = `(23){"foo":[~1],"bar":[~2]}
 (64)<object class="foo" id="1">{"name":"Foo",#"nonEnumerable":"bar"}

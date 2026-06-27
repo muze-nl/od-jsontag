@@ -449,7 +449,7 @@ export default class Parser extends JSONTag.Parser
                     if (this.meta.access && !this.meta.access(target, prop, 'has')) {
                         return false
                     }
-                    this.firstParse()
+                    this.firstParse(target)
                     return prop in target
                 },
                 setPrototypeOf: () => {
@@ -465,7 +465,8 @@ export default class Parser extends JSONTag.Parser
             let source = SABtoString(this.input)
             this.error("Expected '"+c+"' instead of '"+this.ch+"':"+this.at+':'+source)
         }
-        this.ch = String.fromCharCode(this.input.at(this.at))
+        let code = this.input.at(this.at)
+        this.ch = typeof code === 'undefined' ? '' : String.fromCharCode(code)
         this.at+=1
         return this.ch
     }

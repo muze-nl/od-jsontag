@@ -321,3 +321,38 @@ tap.test('previous not serialized', t => {
 	t.same('(31)<object id="bar">{"name":"baz"}', s)
 	t.end()
 })
+
+tap.test('mixed array serialization', t => {
+	const one = {name: 'one'}
+	const two = {name: 'two'}
+	const data = {
+		items: [one, 'middle', two]
+	}
+	const result = stringify(serialize(data))
+	t.same(result, `(26){"items":[~1,"middle",~2]}
+(14){"name":"one"}
+(14){"name":"two"}`)
+	t.end()
+})
+
+tap.test('tagged null serialization', t => {
+	const data = {
+		string: JSONTag.parse('<string>null'),
+		int: JSONTag.parse('<int>null')
+	}
+	const result = stringify(serialize(data))
+	t.same(result, `(31){"string":null,"int":<int>null}`)
+	t.end()
+})
+
+tap.test('object property references parsed proxy', t => {
+	const parser = new Parser()
+	parser.immutable = false
+	const root = parser.parse(`(10){"foo":~1}
+(14){"name":"Foo"}`)
+	root.other = root.foo
+	t.same(stringify(serialize(root)), `(21){"foo":~1,"other":~1}
+(14){"name":"Foo"}`)
+	t.same(stringify(serialize(root, {changes: true})), `(21){"foo":~1,"other":~1}`)
+	t.end()
+})
