@@ -8,6 +8,42 @@ JSON is highly optimized in Node.js and is hard to beat when you need the whole
 document. `od-jsontag` becomes interesting when lazy access avoids parsing most
 object bodies, or when file-backed access avoids loading the whole data file.
 
+## File-backed hardening measurements (2026-09-23)
+
+The later tables describe the original indexed-parsing prototype. The hardened
+reader also validates and registers the complete index, preserves source layers,
+and bounds the clean read-only decoded-record cache. Startup is therefore O(number
+of indexed records), even though it only decodes the root record.
+
+On Node v24.7.0, a single warm-cache run with 100,000 records and 1,000 sampled
+reads measured:
+
+| Mode | Register/open | Read 1,000 records | Combined | Retained buffers |
+| --- | ---: | ---: | ---: | ---: |
+| File-backed | 43.90 ms | 28.17 ms | 73.14 ms | approximately 0 MB |
+| Indexed SharedArrayBuffer | 46.35 ms | 26.42 ms | 73.17 ms | 11.17 MB |
+
+Both returned the same checksum. This is slower at opening than the original
+prototype's approximately 17 ms combined file run; correctness checks and a
+complete source catalog have measurable cost. The index/catalog still consume
+O(record count) memory. These single warm-cache timings are not cold-storage or
+multiworker guarantees.
+
+Run `node --expose-gc benchmark/retention.mjs` to measure cumulative reads with
+turn boundaries and GC while keeping the parser/root live. The 20,000-record
+exercise held at most 256 clean decoded records and no persistent file buffers.
+With `--max-old-space-size=48` and `--payload=16384`, it scanned a 328,328,915-byte
+file, verified all values, and retained about 14.44 MB heap after scanning. Clearing
+the cache reduced that sample to about 10.16 MB. The source exceeded the configured
+JavaScript heap limit, not the machine's physical RAM. Larger individual records,
+retained application results, mutable edits and many more index entries remain
+separate memory costs.
+
+A read-only check on the 77,952,430-byte curriculum dataset registered 181,724
+records in approximately 105 ms. 1,000 sampled objects matched the prior buffered
+reader; streamed serialization reproduced the full source hash. That establishes
+compatibility for the checked dataset, not a general query-throughput claim.
+
 ## Summary
 
 Use standard JSON when:

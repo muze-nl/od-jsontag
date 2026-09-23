@@ -1,6 +1,6 @@
 import JSONTag from '@muze-nl/jsontag'
 import serialize, {stringify} from '../src/serialize.mjs'
-import {source, isChanged, getBuffer, getIndex, isProxy} from '../src/symbols.mjs'
+import {isChanged, getIndex, isProxy} from '../src/symbols.mjs'
 import Parser from '../src/parse.mjs'
 import tap from 'tap'
 
@@ -42,7 +42,7 @@ tap.test('identity', t => {
 	let root = parser.parse(strData);
 	t.equal(JSONTag.getAttribute(root.foo[0], 'id'), '1')
 	let meta = {}
-	let sab = serialize(root, {meta})
+	serialize(root, {meta})
 	t.equal(meta.index.id.get('1'),1)
 	t.end()
 })
@@ -55,7 +55,7 @@ tap.test('access after serialize', t => {
 	let root = parser.parse(strData);
 	let foo = root.foo[0]
 	let meta = {}
-	let string = stringify(serialize(root, {meta}))
+	stringify(serialize(root, {meta}))
 	t.equal(foo, root.foo[0])
 	t.equal(foo.name, 'Foo')
 	t.end()
@@ -176,7 +176,7 @@ tap.test('nonEnumerableArrayProxy', t => {
 	try {
 		root.arr.push('baz')
 		t.ok(false)
-	} catch(e) {
+	} catch {
 		t.ok(true)
 	}
 	parser.immutable = false

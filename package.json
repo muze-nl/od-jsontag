@@ -15,7 +15,8 @@
 	"license": "MIT",
 	"main": "./src/parse.mjs",
 	"scripts": {
-		"test": "tap test/*.mjs"
+		"test": "tap --allow-incomplete-coverage test/*.mjs",
+		"lint": "eslint src test benchmark eslint.config.js"
 	},
 	"repository": {
 		"type": "git",
@@ -32,6 +33,7 @@
 	},
 	"files": [
 		"src/",
+		"docs/",
 		"README.md",
 		"LICENSE"
 	],

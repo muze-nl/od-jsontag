@@ -75,14 +75,14 @@ proxies when a reference is accessed.
 
 `lineIndex` may be:
 
-- an already parsed JavaScript array;
+- an already parsed JavaScript array or object keyed by record number;
 - a JSON string;
 - a `Uint8Array` containing JSON;
 - a path to a JSON index file;
 - a numeric file descriptor for a JSON index file;
 - an object with an integer `.fd` property for a JSON index file.
 
-The parsed line index must be an array:
+The parsed line index can be an array:
 
 ```json
 [
@@ -171,7 +171,10 @@ od-jsontag for lazy parsing state.
 
 Important fields:
 
-- `meta.resultArray`: array of line proxies and new values.
+- `meta.resultArray`: sparse view of materialized proxies and new values. Its
+  length spans the logical record space; an unread indexed entry may be absent.
+  Do not use this cache to enumerate the complete stored dataset. Serialization
+  and `parser.getLineProxy(recordNumber)` use the complete record catalog.
 - `meta.index.id`: `Map` from JSONTag `id` attributes to line numbers.
 - `meta.access`: optional access-control function.
 
@@ -258,6 +261,24 @@ lines".
 Internal option used when serializing one line body without the `(N)` length
 prefix. Most callers should not use it directly.
 
+## `serializeChunks(value, options)`
+
+```js
+import {serializeChunks} from '@muze-nl/od-jsontag/src/serialize.mjs'
+
+for (const chunk of serializeChunks(root)) {
+  // Pass the chunk to a writer that handles backpressure and partial writes.
+}
+```
+
+This synchronous generator uses the same options and produces the same bytes as
+`serialize()`, one record/marker/separator chunk at a time. It avoids a full-output
+SharedArrayBuffer. Consume it without changing the parser, its inputs, or the
+dataset until iteration completes. The application owns destination publication,
+durability and cleanup of partial output. Passing `meta` updates its ID index as
+records are consumed. Full serialization preserves unread records; it is not a
+full semantic validation of every untouched record body.
+
 ## `stringify(buffer)`
 
 ```js
@@ -301,7 +322,8 @@ Commonly useful symbols:
 - `isChanged`: whether a parsed value has been changed.
 - `source`: underlying target object for a proxy.
 - `resultSet`: access to the parser result array.
-- `previous`: clone of the previous value, set when mutable objects are changed.
+- `previous`: shallow before-edit snapshot, refreshed after an applied record
+  update. It is not a persistent version chain; referenced objects remain live.
 
 ## JSONTag links
 
@@ -345,3 +367,52 @@ root.items[0].name
 
 This is expected: od-jsontag only parses the line needed for the current
 operation.
+
+## Indexed view lifetime and cache
+
+Indexes may be sparse objects such as `{"0":[4,20],"7":[25,40]}`. Missing/null
+entries do not replace existing records. Ranges may cover a complete framed line
+or just its payload. Byte offsets refer to the supplied file, not a combined
+virtual file. Every overlay keeps its own source; incoming records replace the
+same record numbers and new values are allocated beyond the complete record span.
+
+The first indexed input must supply record 0. Later indexed inputs and ordinary
+buffer patches update the existing view; they are not independent snapshots.
+A held object proxy observes an applied update for its record. References to
+embedded arrays obtained before an update are views of the old array value;
+re-read the object property after an update. Use separate parsers to retain
+independent versions. Replacing `parser.meta` (or its `resultArray`) starts a new
+session on the next parse, supporting reused command workers. Discard handles
+from the old session.
+
+Callers own file descriptors and must keep them open with stable contents for
+the entire view lifetime. Closing, truncating or editing a source while it is
+in use invalidates that contract. Offsets are copied and checked at registration.
+Short reads are completed; unexpected EOF and I/O errors propagate. Framing and
+JSONTag syntax are checked when a record is read/parsed. Invalid indexes are
+rejected before applying their entries, but parsing a batch is not a transaction:
+after a malformed parse, discard that parser rather than treating it as rolled
+back. Hash verification, writer ownership and durable publication belong to the
+host application.
+
+`parser.cacheSize` is a positive integer, default 256. It limits clean decoded
+record bodies retained by a read-only parser. Access evicts least recently used
+bodies; their live record proxies remain usable and reload on demand. This is a
+record-count limit, not a byte limit. A single record can be large. The record
+catalog and weak-reference metadata grow with record count. Arrays or values
+explicitly retained by callers have their own lifetimes.
+
+`parser.cacheInfo()` reports `residentRecords` and `records` (the logical record
+span, including sparse holes). `parser.clearCache()` releases cached decoded
+bodies; it refuses mutable sessions or uncommitted edits. Mutable parsers retain
+touched records to preserve edit/array semantics; keep them scoped to a command
+or other bounded edit session. Switching an edited parser to read-only does not
+make its edits evictable. Internal `source`, `resultSet` and `recordStore` symbols
+are trusted integration facilities, not a security boundary for untrusted code.
+
+Reflection respects `meta.access` for property values and `has`; immutable array
+writes through `defineProperty` are rejected. Stored definitions must be
+configurable data properties so record updates can replace them. Accessors,
+nonconfigurable definitions, prototype changes and preventing extensions are
+unsupported. JavaScript's nonconfigurable array `length` cannot be hidden from
+`ownKeys`; a denied descriptor request for it throws.

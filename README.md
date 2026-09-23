@@ -135,10 +135,11 @@ const index = [
 const root = parser.parse(buffer, JSON.stringify(index))
 ```
 
-The index is a JSON array where each entry is `[start, end]` byte offsets in the
-data file. It can be supplied as:
+The index is an array or an object keyed by record number. Each entry is a
+`[start, end]` byte range in the data file, with an exclusive end. Sparse changeset
+indexes keep their original record numbers. It can be supplied as:
 
-- an already parsed array;
+- an already parsed array or record-number object;
 - a JSON string;
 - a `Uint8Array` containing JSON;
 - a path to a JSON file;
@@ -159,6 +160,26 @@ try {
   closeSync(dataFd)
 }
 ```
+
+Keep every source descriptor open, and its bytes unchanged, while the parser or
+its proxies are in use. The parser does not own or close descriptors. Repeated
+`parse(fd, index)` calls overlay records at their existing numbers; untouched
+records keep their previous file source. Buffer patches also work on indexed
+views. Use separate parsers for independently retained historical snapshots.
+
+Read-only parsers cache up to 256 clean decoded records by default:
+
+```js
+parser.cacheSize = 128
+console.log(parser.cacheInfo())
+parser.clearCache()
+```
+
+Evicted records reload when accessed; live object proxies keep their identity.
+The bound covers decoded record bodies, not the record index, caller-retained
+arrays/values, or edits. Mutable sessions retain touched records until the session
+is discarded or their updates are applied. See the [reference](docs/reference.md)
+for lifetime and error semantics.
 
 ## Mutability
 
@@ -214,7 +235,10 @@ Access denial returns `undefined` or `false`, depending on the proxy operation.
 ## Serialization
 
 Use `serialize(value, options)` to create the od-jsontag byte representation.
-It returns a `Uint8Array` backed by a `SharedArrayBuffer`.
+It returns a `Uint8Array` backed by a `SharedArrayBuffer`. For large output,
+`serializeChunks(value, options)` yields framed `Uint8Array` chunks incrementally
+without allocating the entire serialized dataset. Both visit the complete record
+catalog, including records that have never been accessed.
 
 ```js
 const buffer = serialize(root)
@@ -251,17 +275,16 @@ inside the line format:
 
 ## Development
 
-Run the direct test files with Node:
-
 ```sh
-node --input-type=module -e "await import('./test/parse.mjs'); await import('./test/serialize.mjs');"
+npm test
+npm run lint
+node --expose-gc benchmark/retention.mjs
 ```
 
-Coverage can be generated with:
+Tests report coverage and fail on assertion failures. Incomplete coverage is
+explicitly allowed; coverage percentage is evidence, not a claim of completeness.
+The file-backed tests include unread records, sparse overlays, partial reads,
+Unicode, cache eviction, reflection policy and command-worker session resets.
 
-```sh
-node node_modules/c8/bin/c8.js --reporter=text --reporter=text-summary node --input-type=module -e "await import('./test/parse.mjs'); await import('./test/serialize.mjs');"
-```
-
-At the moment the package `npm test` command uses the tap CLI, which may report
-the ESM test files as "no tests found" in some environments.
+See [the hardening evaluation](docs/file-backed-hardening.md) for verification
+against SimplyStore and the current operating limits.

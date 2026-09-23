@@ -1,12 +1,11 @@
 import JSONTag from '@muze-nl/jsontag'
-import {isChanged, source, getBuffer, getIndex, isProxy, proxyType, previous} from '../src/symbols.mjs'
+import {source, getIndex, previous} from '../src/symbols.mjs'
 import Parser from '../src/parse.mjs'
-import serialize, {stringify} from '../src/serialize.mjs'
+import serialize from '../src/serialize.mjs'
 import tap from 'tap'
 import {closeSync, openSync, writeFileSync} from 'node:fs'
 
 const encoder = new TextEncoder()
-const decoder = new TextDecoder()
 const parser = new Parser()
 
 function stringToSAB(strData) {
@@ -370,7 +369,7 @@ tap.test('array operators and access policies', t => {
 
 	let deniedParser = new Parser()
 	deniedParser.immutable = false
-	deniedParser.meta.access = (object, property, method) => property !== '0'
+	deniedParser.meta.access = (object, property) => property !== '0'
 	root = deniedParser.parse('(19){"arr":["a","b"]}')
 	t.equal(root.arr[0], undefined)
 	t.equal(Reflect.set(root.arr, '0', 'x'), false)
@@ -397,7 +396,7 @@ tap.test('immutable', t => {
 	try {
 		root.foo[0].name='Baz'
 		t.ok(false)
-	} catch(e) {
+	} catch {
 		t.ok(true)
 	}
 	t.equal(root.foo[0].name, 'Foo')
@@ -425,7 +424,7 @@ tap.test('entries', t => {
 })
 
 tap.test('unicode', t => {
-	let strData = `(13){"foo":"𠮷a"}` // >16bit unicode characters 
+	let strData = `(13){"foo":"𠮷a"}` // >16bit unicode characters
 	let sab = stringToSAB(strData)
 	let root = parser.parse(sab)
 	t.equal(root.foo, '𠮷a')
@@ -433,7 +432,7 @@ tap.test('unicode', t => {
 })
 
 tap.test('encoded unicode', t => {
-	let strData = `(13){"foo":"\\u20aca"}` // >16bit unicode characters 
+	let strData = `(17){"foo":"\\u20aca"}` // >16bit unicode characters
 	let sab = stringToSAB(strData)
 	let root = parser.parse(sab)
 	t.equal(root.foo, '€a')
@@ -459,8 +458,7 @@ tap.test('access', t => {
 })
 
 tap.test('merge', t => {
-	let meta = {}
-	let strData = `(23){"foo":[~1],"bar":[~2]}
+		let strData = `(23){"foo":[~1],"bar":[~2]}
 (64)<object class="foo" id="1">{"name":"Foo",#"nonEnumerable":"bar"}
 (57)<object class="bar" id="2">{"name":"Bar","children":[~1]}`
 	let root = parser.parse(strData)
@@ -495,7 +493,7 @@ tap.test('defineProperty', t => {
 	let mutableParser = new Parser() //'https://example.com',false)
 	mutableParser.immutable = false
 	let parsed = mutableParser.parse(strData)
-	Object.defineProperty(parsed.examenprogrammaEindterm[0], 
+	Object.defineProperty(parsed.examenprogrammaEindterm[0],
 		'examenprogrammaDomein', {
 			value: [],
 			enumerable: false,
@@ -505,7 +503,7 @@ tap.test('defineProperty', t => {
 	);
 	parsed.examenprogrammaEindterm[0].examenprogrammaDomein
 	.push(parsed.examenprogrammaDomein[0])
-	t.equal(parsed.examenprogrammaEindterm[0].examenprogrammaDomein[0], 
+	t.equal(parsed.examenprogrammaEindterm[0].examenprogrammaDomein[0],
 			parsed.examenprogrammaDomein[0])
 	t.end()
 })
@@ -521,7 +519,7 @@ tap.test('parseNull', t => {
 	d.bar = null
 	let s2 = serialize(d)
 	let d2 = mutableParser.parse(s2)
-	t.same(d2.foo, data.foo)	
+	t.same(d2.foo, data.foo)
 	t.end()
 })
 
@@ -574,7 +572,7 @@ tap.test('handle JSONTag links', t => {
 	parser.immutable = false
 	const odData = parser.parse(odDataBuf)
 	// create index
-	let sab = serialize(odData, {meta:parser.meta})
+	serialize(odData, {meta:parser.meta})
 
 	const l = new JSONTag.Link('bar')
 	odData.foo.push(l)
@@ -596,7 +594,7 @@ tap.test('handle nested JSONTag links', t => {
 	parser.immutable = false
 	const odData = parser.parse(odDataBuf)
 	// create index
-	let sab = serialize(odData, {meta:parser.meta})
+	serialize(odData, {meta:parser.meta})
 
 	const addedDataStr = `
 <object id="baz">{

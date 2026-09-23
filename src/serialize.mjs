@@ -1,21 +1,13 @@
 import JSONTag from '@muze-nl/jsontag';
-import {source,isProxy, isChanged, getIndex, getBuffer, resultSet} from './symbols.mjs'
+import {isProxy, isChanged, getIndex, getBuffer, resultSet, recordStore} from './symbols.mjs'
 
 // faststringify function for a fast parseable arraybuffer output
 // 
-const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const realJSON = JSON // in case someone redefines JSON as JSONTag later
 
-function stringToSAB(strData) {
-    const buffer = encoder.encode(strData)
-    const sab = new SharedArrayBuffer(buffer.length)
-    let uint8sab = new Uint8Array(sab)
-    uint8sab.set(buffer,0)
-    return uint8sab
-}
-
-export default function serialize(value, options={}) {
+export function* serializeChunks(value, options={}) {
+    const records = value?.[recordStore]
     let resultArray = false
     let references = new WeakMap()
 
@@ -37,7 +29,7 @@ export default function serialize(value, options={}) {
         resultArray = []
     }
 
-    function stringifyValue(value, inarray=false, current) {
+    function stringifyValue(value) {
         let prop
         let typeString = JSONTag.getTypeString(value)
         let type = JSONTag.getType(value)
@@ -88,15 +80,15 @@ export default function serialize(value, options={}) {
                 }
                 prop = typeString + value
             break
-            case 'array': 
-                let entries = value.map(e => stringifyValue(e, true, current))
+            case 'array': {
+                let entries = value.map(e => stringifyValue(e))
                 let mergedEntries = []
                 let previousIndex = null
                 let startSlice = null
                 entries.forEach(e => {
                     if (e[0]=='~') {
                         let currIndex = parseInt(e.substr(1))
-                        if (startSlice && currIndex === (previousIndex + 1)) {
+                        if (startSlice !== null && currIndex === (previousIndex + 1)) {
                             mergedEntries.pop()
                             mergedEntries.push('~' + startSlice + '-' + currIndex)
                             previousIndex = currIndex
@@ -113,16 +105,13 @@ export default function serialize(value, options={}) {
                 })
                 entries = mergedEntries.join(',')
                 prop = typeString + '[' + entries + ']'
-            break
+                break
+            }
             case 'object':
                 if (!value) {
                     prop = 'null'
                 } else if (value[isProxy]) {
-                    if (inarray) {
-                        prop = '~'+value[getIndex]
-                    } else {
-                        prop = decoder.decode(value[getBuffer](current))
-                    }
+                    prop = '~' + value[getIndex]
                 } else {
                     if (!references.has(value)) {
                         references.set(value, resultArray.length)
@@ -133,7 +122,6 @@ export default function serialize(value, options={}) {
             break
             default:
                 throw new Error(JSONTag.getType(value)+' type not yet implemented')
-            break
         }
         return prop
     }
@@ -144,7 +132,7 @@ export default function serialize(value, options={}) {
     // is only ever called on object values
     // and should always return a stringified object, not a reference (~n)
     const innerStringify = (current) => {
-        let object = resultArray[current]
+        let object = records ? records.value(current) : resultArray[current]
         let result 
 
         // if value is a valueProxy, just copy the input slice
@@ -158,8 +146,8 @@ export default function serialize(value, options={}) {
         let props = []
         for (let key of Object.getOwnPropertyNames(object)) {
             let value = object[key]
-            let prop = stringifyValue(value, false, current)
-            let enumerable = object.propertyIsEnumerable(key) ? '' : '#'
+            let prop = stringifyValue(value)
+            let enumerable = Object.prototype.propertyIsEnumerable.call(object, key) ? '' : '#'
             props.push(enumerable+realJSON.stringify(key)+':'+prop) //FIXME: how does key get escaped?
         }
         result = JSONTag.getTypeString(object)+'{'+props.join(',')+'}'
@@ -181,66 +169,62 @@ export default function serialize(value, options={}) {
     }
 
     if (!value?.[resultSet]) {
+        if (value && typeof value === 'object') {
+            references.set(value, resultArray.length)
+        }
         resultArray.push(value)
     }
-    let currentSource = 0
-    let currentResult = 0
     let skipCount = 0
-    let result = []
-    while(currentSource<resultArray.length) {
-        if (!resultArray[currentSource]) {
-            //FIXME: should not happen, this means that there is no complete
-            //od-jsontag file, only patches?
+    let first = true
+    const count = () => Math.max(resultArray.length, records?.length || 0)
+    for (let current = 0; current < count(); current++) {
+        const object = resultArray[current]
+        const persisted = records?.has(current)
+        if ((!object && !persisted) ||
+            (options.changes && persisted && !object?.[isChanged])) {
             skipCount++
-        } else if (resultArray[currentSource][isChanged] || !resultArray[currentSource][isProxy]) {
-            if (skipCount) {
-                result[currentResult] = encoder.encode('+'+skipCount)
-                skipCount = 0
-                currentResult++
-            }
-            result[currentResult] = encoder.encode(innerStringify(currentSource))
-            if (options.meta) {
-                const id=JSONTag.getAttribute(resultArray[currentSource],'id')
-                if (id) {
-                    options.meta.index.id.set(id, currentSource)
-                }
-            }
-            currentResult++
-        } else if (!options.changes) {
-            result[currentResult] = resultArray[currentSource][getBuffer](currentSource)
-            if (options.meta) {
-                const id=JSONTag.getAttribute(resultArray[currentSource],'id')
-                if (id) {
-                    options.meta.index.id.set(id, currentSource)
-                }
-            }
-            currentResult++
-        } else {
-            skipCount++
+            continue
         }
+        if (!first) {
+            yield new Uint8Array([10])
+        }
+        if (skipCount) {
+            yield encoder.encode('+' + skipCount)
+            yield new Uint8Array([10])
+            skipCount = 0
+        }
+        let bytes
+        if (persisted && !object?.[isChanged]) {
+            bytes = records.read(current)
+        }
+        else if (object?.[isProxy] && !object[isChanged]) {
+            bytes = object[getBuffer](current)
+        }
+        else {
+            bytes = encoder.encode(innerStringify(current))
+        }
+        yield encode(bytes)
+        if (options.meta) {
+            const entry = records ? records.value(current) : object
+            const id = JSONTag.getAttribute(entry, 'id')
+            if (id) {
+                options.meta.index.id.set(id, current)
+            }
+        }
+        first = false
+    }
+}
 
-        currentSource++
-    }
-    let arr = result.map(encode)
-    let length = 0
-    for (let line of arr) {
-        length += line.length+1
-    }
-    if (length) {
-        length -= 1 // skip last newline
-    }
-    let sab = new SharedArrayBuffer(length)
-    let u8arr = new Uint8Array(sab)
+export default function serialize(value, options={}) {
+    const chunks = [...serializeChunks(value, options)]
+    const length = chunks.reduce((total, chunk) => total + chunk.length, 0)
+    const bytes = new Uint8Array(new SharedArrayBuffer(length))
     let offset = 0
-    for(let line of arr) {
-        u8arr.set(line, offset)
-        offset+=line.length
-        if (offset<length) {
-            u8arr.set([10], offset)
-            offset++
-        }
+    for (const chunk of chunks) {
+        bytes.set(chunk, offset)
+        offset += chunk.length
     }
-    return u8arr
+    return bytes
 }
 
 export function stringify(buf) {

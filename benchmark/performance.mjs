@@ -1,4 +1,4 @@
-import {closeSync, openSync, writeFileSync} from 'node:fs'
+import {closeSync, openSync, writeFileSync, unlinkSync} from 'node:fs'
 import {deserialize as v8Deserialize, serialize as v8Serialize} from 'node:v8'
 import Parser from '../src/parse.mjs'
 
@@ -162,11 +162,28 @@ function finish(label, setup, run) {
     inputBytes: input.inputBytes,
     indexBytes: input.indexBytes ?? 0,
     ms: measured.ms,
+    openMs: measured.result?.openMs,
+    accessMs: measured.result?.accessMs,
     inputMemory: diff(processStart, inputReady),
     operationMemory: diff(inputReady, after),
     totalMemory: diff(processStart, after),
     checksum: measured.result?.checksum ?? measured.result
   }))
+}
+
+function indexedAccess(input, index) {
+  const parser = new Parser()
+  const opened = timed(() => parser.parse(input, index))
+  const root = opened.result
+  const accessed = timed(() => {
+    let checksum = 0
+    for (const pos of positions()) {
+      checksum += root.items[pos].score
+    }
+    return checksum
+  })
+  return {root, checksum: accessed.result, openMs: opened.ms,
+    accessMs: accessed.ms}
 }
 
 function runScenario(name) {
@@ -254,13 +271,7 @@ function runScenario(name) {
       forceGc()
       return {buffer, index, inputBytes, indexBytes}
     }, ({buffer, index}) => {
-      const parser = new Parser()
-      const root = parser.parse(buffer, index)
-      let checksum = 0
-      for (const pos of positions()) {
-        checksum += root.items[pos].score
-      }
-      return {root, checksum}
+      return indexedAccess(buffer, index)
     })
     return
   }
@@ -276,18 +287,13 @@ function runScenario(name) {
       const fd = openSync(path, 'r')
       text = null
       forceGc()
-      return {fd, index, inputBytes, indexBytes}
-    }, ({fd, index}) => {
+      return {fd, path, index, inputBytes, indexBytes}
+    }, ({fd, path, index}) => {
       try {
-        const parser = new Parser()
-        const root = parser.parse(fd, index)
-        let checksum = 0
-        for (const pos of positions()) {
-          checksum += root.items[pos].score
-        }
-        return {root, checksum}
+        return indexedAccess(fd, index)
       } finally {
         closeSync(fd)
+        unlinkSync(path)
       }
     })
     return

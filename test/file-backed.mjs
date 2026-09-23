@@ -1,4 +1,6 @@
 import tap from 'tap'
+import fs from 'node:fs'
+import {syncBuiltinESMExports} from 'node:module'
 import assert from 'node:assert/strict'
 import {
     closeSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync
@@ -205,5 +207,181 @@ tap.test('streamed serialization preserves sparse records without full output al
         const copy = new Parser().parse(readFileSync(file))
         t.equal(copy.items[1].name, 'two')
     }
+    t.end()
+})
+
+tap.test('short file reads are completed and truncation fails explicitly', t => {
+    const {root, fd} = store(t)
+    const originalRead = fs.readSync
+    let calls = 0
+    try {
+        fs.readSync = (file, bytes, offset, length, position) => {
+            if (file === fd) {
+                calls++
+                length = Math.min(length, 3)
+            }
+            return originalRead(file, bytes, offset, length, position)
+        }
+        syncBuiltinESMExports()
+        t.equal(root.items[0].name, 'one')
+        t.ok(calls > 1)
+        fs.readSync = file => {
+            assert.equal(file, fd)
+            return 0
+        }
+        syncBuiltinESMExports()
+        t.throws(() => root.items[1].name, /Unexpected end of file/)
+        fs.readSync = () => {
+            throw Object.assign(new Error('injected read failure'), {code: 'EIO'})
+        }
+        syncBuiltinESMExports()
+        t.throws(() => root.items[1].name, {code: 'EIO'})
+    }
+    finally {
+        fs.readSync = originalRead
+        syncBuiltinESMExports()
+    }
+    t.equal(root.items[1].name, 'two')
+    t.end()
+})
+
+tap.test('Unicode byte ranges and escaped surrogate pairs survive streamed roundtrip', t => {
+    const data = fixture([
+        '{"items":[~1-2]}',
+        '{"name":"Padmé 𠮷 €"}',
+        '{"name":"\\uD842\\uDFB7"}'
+    ])
+    const {root, parser} = store(t, data)
+    parser.cacheSize = 1
+    t.equal(root.items[0].name, 'Padmé 𠮷 €')
+    t.equal(root.items[1].name, '𠮷')
+    const bytes = Buffer.concat([...serialization.serializeChunks(root)])
+    const copy = new Parser().parse(bytes)
+    t.equal(copy.items[0].name, 'Padmé 𠮷 €')
+    t.equal(copy.items[1].name, '𠮷')
+    t.end()
+})
+
+tap.test('record identity and cyclic references survive eviction and overlays', t => {
+    const {root, parser} = store(t, fixture([
+        '{"first":~1,"second":~2}',
+        '{"name":"one","other":~2}',
+        '{"name":"two","other":~1}'
+    ]))
+    parser.cacheSize = 1
+    const first = root.first
+    const second = root.second
+    t.equal(first.other, second)
+    t.equal(second.other, first)
+    parser.parse(fixture(['{"name":"changed","other":~2}'], 1).bytes)
+    t.equal(first.name, 'changed')
+    t.equal(second.other, first)
+    t.end()
+})
+
+tap.test('sparse record numbers remain sparse during full serialization and allocation', t => {
+    const bytes = Buffer.from('{"tail":~7}\n{"name":"seven"}')
+    const boundary = bytes.indexOf(10)
+    const index = {0: [0, boundary], 7: [boundary + 1, bytes.length]}
+    const {root, parser} = store(t, {bytes, index}, false)
+    root.new = {name: 'eight'}
+    t.equal(root.new[getIndex], 8)
+    const copy = new Parser().parse(serialize(root))
+    t.equal(copy.tail.name, 'seven')
+    t.equal(copy.tail[getIndex], 7)
+    t.equal(copy.new[getIndex], 8)
+    t.throws(() => parser.clearCache(), /mutable/)
+    parser.immutable = true
+    t.throws(() => parser.clearCache(), /uncommitted/)
+    t.equal(root.new.name, 'eight')
+    t.end()
+})
+
+tap.test('only edited records appear in patches, even after read cache eviction', t => {
+    const {root, parser} = store(t, base(), false)
+    root.items[1].name = 'changed'
+    const text = Buffer.from(serialize(root, {changes: true})).toString()
+    t.equal(text, '+2\n(18){"name":"changed"}')
+    parser.parse(Buffer.from(text))
+    t.equal(Buffer.from(serialize(root, {changes: true})).length, 0)
+    parser.immutable = true
+    parser.clearCache()
+    t.equal(root.items[1].name, 'changed')
+    t.equal(Buffer.from(serialize(root, {changes: true})).length, 0)
+    t.end()
+})
+
+tap.test('array mutation methods retain untouched references and track nested changes', t => {
+    const {root} = store(t, base(), false)
+    root.items.unshift(null)
+    root.items.splice(1, 1, {name: 'replacement'})
+    root.items.reverse()
+    const copy = new Parser().parse(serialize(root))
+    t.equal(copy.items[0].name, 'two')
+    t.equal(copy.items[1].name, 'replacement')
+    t.equal(copy.items[2], null)
+    t.end()
+})
+
+tap.test('invalid indexes cannot partially replace existing locations', t => {
+    const {root, parser, fd} = store(t)
+    t.throws(() => parser.parse(fd, {0: [0, 20], 1: [-1, 5]}))
+    t.equal(root.items[1].name, 'two')
+    t.throws(() => parser.parse(fd, {'-1': [0, 20]}))
+    t.throws(() => parser.parse(fd, {'1.5': [0, 20]}))
+    t.throws(() => parser.parse(fd, {0: [0]}))
+    t.end()
+})
+
+tap.test('replacing metadata starts a new record space for reused command workers', t => {
+    const parser = new Parser(undefined, false)
+    let root = parser.parse(base().bytes)
+    root.extra = {name: 'old session'}
+    t.equal(root.extra[getIndex], 3)
+    parser.meta = {index: {id: new Map()}, resultArray: []}
+    root = parser.parse(base().bytes)
+    root.extra = {name: 'new session'}
+    t.equal(root.extra[getIndex], 3)
+    const copy = new Parser().parse(serialize(root))
+    t.equal(copy.extra.name, 'new session')
+    t.equal(copy.items.length, 2)
+    t.end()
+})
+
+tap.test('self references and shared new objects retain record identity', t => {
+    const {root} = store(t, base(), false)
+    const added = {name: 'new'}
+    added.self = added
+    root.first = added
+    root.second = added
+    root.self = root
+    t.equal(root.first, root.second)
+    t.equal(root.first.self, root.first)
+    const copy = new Parser().parse(serialize(root))
+    t.equal(copy.self, copy)
+    t.equal(copy.first, copy.second)
+    t.equal(copy.first.self, copy.first)
+    t.end()
+})
+
+tap.test('read-only array searches do not allocate command records', t => {
+    const {root, parser} = store(t)
+    const count = parser.cacheInfo().records
+    t.equal(root.items.includes({name: 'one'}), false)
+    t.equal(root.items.indexOf({name: 'two'}), -1)
+    t.equal(parser.cacheInfo().records, count)
+    t.equal(serialize(root, {changes: true}).length, 0)
+    t.end()
+})
+
+tap.test('previous snapshots expose values rather than internal line references', t => {
+    const {root} = store(t, fixture([
+        '{"item":~1,"items":[~1]}', '{"name":"one"}'
+    ]), false)
+    root.title = 'new'
+    t.equal(root[previous].item.name, 'one')
+    root.items.push({name: 'two'})
+    t.equal(root.items[previous][0].name, 'one')
+    t.equal(root.items[previous].length, 1)
     t.end()
 })
