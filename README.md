@@ -80,8 +80,7 @@ It is probably not the right fit when:
 - your data is a plain tree with no shared references or identity concerns;
 - you need broad query/filter/aggregate operations over millions of rows;
 - you need a stable cross-language binary format;
-- you need transactional updates, indexing, and persistence like a database;
-- you want browser compatibility. The current project targets Node.js.
+- you need transactional updates, indexing, and persistence like a database.
 
 For analytical workloads that scan a few fields across many similar objects, a
 columnar format or database may be a better match. `od-jsontag` is intentionally
@@ -141,22 +140,27 @@ indexes keep their original record numbers. It can be supplied as:
 
 - an already parsed array or record-number object;
 - a JSON string;
-- a `Uint8Array` containing JSON;
-- a path to a JSON file;
-- a file descriptor or object with `.fd` for a JSON index file.
+- a `Uint8Array` containing JSON.
 
-When parsing with an index, `input` can also be a file descriptor. In that mode,
-`od-jsontag` reads only the byte range needed for each line.
+The default parser has no Node imports. For indexed reads it also accepts a
+byte source with `byteLength` and a synchronous `read(start, end)` method that
+returns exactly that range as a `Uint8Array`. See [portability](docs/portability.md)
+for the source contract and runtime requirements.
+
+For Node file descriptors and index-file paths, use the Node entry point:
 
 ```js
+import Parser from '@muze-nl/od-jsontag/src/node.mjs'
 import {openSync, closeSync} from 'node:fs'
 
+const parser = new Parser()
 const dataFd = openSync('data.odjt', 'r')
 
 try {
   const root = parser.parse(dataFd, 'data.odjt.index.json')
   console.log(root.foo[0].name)
-} finally {
+}
+finally {
   closeSync(dataFd)
 }
 ```
@@ -235,7 +239,8 @@ Access denial returns `undefined` or `false`, depending on the proxy operation.
 ## Serialization
 
 Use `serialize(value, options)` to create the od-jsontag byte representation.
-It returns a `Uint8Array` backed by a `SharedArrayBuffer`. For large output,
+It returns a `Uint8Array` backed by a `SharedArrayBuffer` when available, or an
+`ArrayBuffer` otherwise. For large output,
 `serializeChunks(value, options)` yields framed `Uint8Array` chunks incrementally
 without allocating the entire serialized dataset. Both visit the complete record
 catalog, including records that have never been accessed.

@@ -1,6 +1,6 @@
 import {closeSync, openSync, writeFileSync, unlinkSync} from 'node:fs'
 import {deserialize as v8Deserialize, serialize as v8Serialize} from 'node:v8'
-import Parser from '../src/parse.mjs'
+import Parser from '../src/node.mjs'
 
 const encoder = new TextEncoder()
 

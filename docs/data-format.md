@@ -234,8 +234,9 @@ actually accessed.
 
 ## File-backed parsing
 
-When you pass a file descriptor as `input` together with an index, od-jsontag
-does not load the full data file into memory.
+With the Node parser (`@muze-nl/od-jsontag/src/node.mjs`), you can pass a
+file descriptor as `input` together with an index. The portable parser accepts
+a byte source instead. Neither approach loads the full data file into memory.
 
 Instead, it reads the byte range for each line as needed:
 
@@ -251,7 +252,8 @@ accessed line needs a file read.
 
 ## SharedArrayBuffer-backed parsing
 
-`serialize()` returns a `Uint8Array` backed by a `SharedArrayBuffer`.
+`serialize()` returns a `Uint8Array` backed by a `SharedArrayBuffer` when
+available, or an ordinary `ArrayBuffer` otherwise.
 
 That means the same byte data can be shared between Node.js workers. Each worker
 can create its own parser and lazy proxy graph over the same bytes.

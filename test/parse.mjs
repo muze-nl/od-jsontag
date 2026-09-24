@@ -1,6 +1,7 @@
 import JSONTag from '@muze-nl/jsontag'
 import {source, getIndex, previous} from '../src/symbols.mjs'
 import Parser from '../src/parse.mjs'
+import NodeParser from '../src/node.mjs'
 import serialize from '../src/serialize.mjs'
 import tap from 'tap'
 import {closeSync, openSync, writeFileSync} from 'node:fs'
@@ -120,7 +121,7 @@ tap.test('parse file descriptor with line index', t => {
 	writeFileSync(path, strData)
 	writeFileSync(indexPath, JSON.stringify(lineIndex(strData)))
 	let fd = openSync(path, 'r')
-	let indexedParser = new Parser()
+	let indexedParser = new NodeParser()
 	let root
 	try {
 		root = indexedParser.parse(fd, indexPath)
@@ -149,7 +150,7 @@ tap.test('parse JSON index document variants', t => {
 	writeFileSync(path, index)
 	let fd = openSync(path, 'r')
 	try {
-		indexedParser = new Parser()
+		indexedParser = new NodeParser()
 		root = indexedParser.parse(stringToSAB(strData), {fd})
 		t.equal(root.foo[0].name, 'Foo')
 	} finally {

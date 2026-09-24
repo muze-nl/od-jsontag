@@ -7,7 +7,7 @@ import {
 } from 'node:fs'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
-import Parser from '../src/parse.mjs'
+import Parser from '../src/node.mjs'
 import serialize, * as serialization from '../src/serialize.mjs'
 import {getIndex, previous, isChanged} from '../src/symbols.mjs'
 

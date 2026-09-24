@@ -1,20 +1,11 @@
 import JSONTag from '@muze-nl/jsontag';
 import Null from '@muze-nl/jsontag/src/lib/Null.mjs'
-import Records, {fileDescriptor, parseLineIndex} from './records.mjs'
+import Records, {isByteSource, parseLineIndex} from './records.mjs'
 import serialize from './serialize.mjs'
 import {source,isProxy,proxyType,getBuffer,getIndex,isChanged,isParsed,position,parent,resultSet, previous, recordStore} from './symbols.mjs'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
-
-function stringToSAB(strData)
-{
-    const buffer = encoder.encode(strData)
-    const sab = new SharedArrayBuffer(buffer.length)
-    let uint8sab = new Uint8Array(sab)
-    uint8sab.set(buffer,0)
-    return uint8sab
-}
 
 function SABtoString(arr)
 {
@@ -1138,11 +1129,10 @@ export default class Parser extends JSONTag.Parser
     parse(input, lineIndex)
     {
         if (typeof input == 'string' || input instanceof String) {
-            input = stringToSAB(input)
+            input = encoder.encode(input)
         }
-        let inputIsReadable = input instanceof Uint8Array || typeof fileDescriptor(input) !== 'undefined'
-        if (!(input instanceof Uint8Array) && !(lineIndex && inputIsReadable)) {
-            this.error('parse only accepts Uint8Array or String as input')
+        if (!(input instanceof Uint8Array) && !(lineIndex && isByteSource(input))) {
+            this.error('parse requires bytes, a string, or an indexed byte source')
         }
         if (this.meta !== this.sessionMeta ||
             (this.meta.resultArray && this.meta.resultArray !== this.resultArray)) {

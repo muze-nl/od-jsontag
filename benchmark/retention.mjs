@@ -5,7 +5,7 @@ import {
 import {tmpdir} from 'node:os'
 import path from 'node:path'
 import {setImmediate} from 'node:timers/promises'
-import Parser from '../src/parse.mjs'
+import Parser from '../src/node.mjs'
 
 function option(name, fallback) {
     const prefix = `--${name}=`

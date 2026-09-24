@@ -1,32 +1,17 @@
-import {fstatSync, readFileSync, readSync} from 'node:fs'
-
 const decoder = new TextDecoder()
 
-export function fileDescriptor(input) {
-    if (Number.isInteger(input) && input >= 0) {
-        return input
-    }
-    if (Number.isInteger(input?.fd) && input.fd >= 0) {
-        return input.fd
-    }
-    return undefined
+export function isByteSource(input) {
+    return input !== null && typeof input === 'object' &&
+        Number.isSafeInteger(input.byteLength) && input.byteLength >= 0 &&
+        typeof input.read === 'function'
 }
 
 export function parseLineIndex(index) {
     if (index instanceof Uint8Array) {
         index = decoder.decode(index)
     }
-    else if (fileDescriptor(index) !== undefined) {
-        index = readFileSync(fileDescriptor(index), 'utf8')
-    }
     if (typeof index === 'string' || index instanceof String) {
-        const text = String(index).trimStart()
-        if (text.startsWith('[') || text.startsWith('{')) {
-            index = JSON.parse(text)
-        }
-        else {
-            index = JSON.parse(readFileSync(String(index), 'utf8'))
-        }
+        index = JSON.parse(String(index))
     }
     if (!index || typeof index !== 'object') {
         throw new TypeError('line index must be an array or record-number object')
@@ -35,14 +20,10 @@ export function parseLineIndex(index) {
 }
 
 function sourceSize(input) {
-    const fd = fileDescriptor(input)
-    if (fd !== undefined) {
-        return fstatSync(fd).size
-    }
-    if (input instanceof Uint8Array) {
+    if (input instanceof Uint8Array || isByteSource(input)) {
         return input.byteLength
     }
-    throw new TypeError('indexed input must be a Uint8Array or file descriptor')
+    throw new TypeError('indexed input must be a Uint8Array or byte source')
 }
 
 // This catalog describes the complete record space, independently of the
@@ -98,23 +79,18 @@ export default class Records {
             throw new RangeError(`Missing record ${index}`)
         }
         const {input, start, end, indexed} = location
-        const fd = fileDescriptor(input)
         let bytes
-        if (fd === undefined) {
+        if (input instanceof Uint8Array) {
             bytes = input.subarray(start, end)
         }
         else {
-            bytes = new Uint8Array(end - start)
-            let offset = 0
-            while (offset < bytes.length) {
-                const count = readSync(
-                    fd, bytes, offset, bytes.length - offset, start + offset
-                )
-                if (count === 0) {
-                    throw new Error(`Unexpected end of file in record ${index}`)
-                }
-                offset += count
-            }
+            bytes = input.read(start, end)
+        }
+        if (!(bytes instanceof Uint8Array)) {
+            throw new TypeError('byte source read must return a Uint8Array')
+        }
+        if (bytes.byteLength !== end - start) {
+            throw new RangeError(`Incomplete byte range for record ${index}`)
         }
         if (!indexed || bytes[0] !== 40) {
             return bytes

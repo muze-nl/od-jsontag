@@ -2,7 +2,8 @@
 
 This document describes the public functionality provided by `od-jsontag`.
 
-The package is ESM-only and targets Node.js.
+The package is ESM-only. The default parser is portable; filesystem integration
+is available through `src/node.mjs`. See [runtime requirements](portability.md).
 
 ```js
 import Parser from '@muze-nl/od-jsontag'
@@ -70,17 +71,18 @@ proxies when a reference is accessed.
 
 - a string;
 - a `Uint8Array`;
-- a numeric file descriptor;
-- an object with an integer `.fd` property.
+- a byte source with `byteLength` and synchronous `read(start, end)`.
 
 `lineIndex` may be:
 
 - an already parsed JavaScript array or object keyed by record number;
 - a JSON string;
-- a `Uint8Array` containing JSON;
-- a path to a JSON index file;
-- a numeric file descriptor for a JSON index file;
-- an object with an integer `.fd` property for a JSON index file.
+- a `Uint8Array` containing JSON.
+
+`read(start, end)` must return exactly `end - start` bytes as a `Uint8Array`,
+with an exclusive end, or throw. Sources require an index and must remain
+readable with unchanged bytes while any proxy can use them. The parser does
+not close sources. See the [source contract](portability.md).
 
 The parsed line index can be an array:
 
@@ -98,9 +100,14 @@ Each entry is `[start, end]` byte offsets for the matching line number.
 const root = parser.parse(buffer, JSON.stringify(index))
 ```
 
+The Node entry point additionally accepts numeric file descriptors and `{fd}`
+data inputs. Indexes may also be file paths, descriptors or `{fd}` objects.
+Change the parser import when migrating existing descriptor/path callers:
+
 File-backed example:
 
 ```js
+import Parser from '@muze-nl/od-jsontag/src/node.mjs'
 import {openSync, closeSync} from 'node:fs'
 
 const parser = new Parser()
@@ -109,7 +116,8 @@ const fd = openSync('data.odjt', 'r')
 try {
   const root = parser.parse(fd, 'data.odjt.index.json')
   console.log(root.items[0].name)
-} finally {
+}
+finally {
   closeSync(fd)
 }
 ```
@@ -228,7 +236,8 @@ const buffer = serialize(value)
 
 Serializes a JavaScript/JSONTag value into od-jsontag format.
 
-Returns a `Uint8Array` backed by a `SharedArrayBuffer`.
+Returns a `Uint8Array` backed by a `SharedArrayBuffer` when available, or an
+`ArrayBuffer` otherwise. Shared memory is not required for parsing or serialization.
 
 ### `options.meta`
 

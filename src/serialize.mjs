@@ -218,7 +218,14 @@ export function* serializeChunks(value, options={}) {
 export default function serialize(value, options={}) {
     const chunks = [...serializeChunks(value, options)]
     const length = chunks.reduce((total, chunk) => total + chunk.length, 0)
-    const bytes = new Uint8Array(new SharedArrayBuffer(length))
+    let buffer
+    if (typeof SharedArrayBuffer === 'function') {
+        buffer = new SharedArrayBuffer(length)
+    }
+    else {
+        buffer = new ArrayBuffer(length)
+    }
+    const bytes = new Uint8Array(buffer)
     let offset = 0
     for (const chunk of chunks) {
         bytes.set(chunk, offset)
