@@ -1,6 +1,6 @@
 import JSONTag from '@muze-nl/jsontag'
 import serialize, {stringify} from '../src/serialize.mjs'
-import {source, isChanged, getBuffer, getIndex, isProxy} from '../src/symbols.mjs'
+import {isChanged, getIndex, isProxy} from '../src/symbols.mjs'
 import Parser from '../src/parse.mjs'
 import tap from 'tap'
 
@@ -42,7 +42,7 @@ tap.test('identity', t => {
 	let root = parser.parse(strData);
 	t.equal(JSONTag.getAttribute(root.foo[0], 'id'), '1')
 	let meta = {}
-	let sab = serialize(root, {meta})
+	serialize(root, {meta})
 	t.equal(meta.index.id.get('1'),1)
 	t.end()
 })
@@ -55,7 +55,7 @@ tap.test('access after serialize', t => {
 	let root = parser.parse(strData);
 	let foo = root.foo[0]
 	let meta = {}
-	let string = stringify(serialize(root, {meta}))
+	stringify(serialize(root, {meta}))
 	t.equal(foo, root.foo[0])
 	t.equal(foo.name, 'Foo')
 	t.end()
@@ -176,7 +176,7 @@ tap.test('nonEnumerableArrayProxy', t => {
 	try {
 		root.arr.push('baz')
 		t.ok(false)
-	} catch(e) {
+	} catch {
 		t.ok(true)
 	}
 	parser.immutable = false
@@ -319,5 +319,40 @@ tap.test('previous not serialized', t => {
 	odData.name = 'baz'
 	let s = stringify(serialize(odData))
 	t.same('(31)<object id="bar">{"name":"baz"}', s)
+	t.end()
+})
+
+tap.test('mixed array serialization', t => {
+	const one = {name: 'one'}
+	const two = {name: 'two'}
+	const data = {
+		items: [one, 'middle', two]
+	}
+	const result = stringify(serialize(data))
+	t.same(result, `(26){"items":[~1,"middle",~2]}
+(14){"name":"one"}
+(14){"name":"two"}`)
+	t.end()
+})
+
+tap.test('tagged null serialization', t => {
+	const data = {
+		string: JSONTag.parse('<string>null'),
+		int: JSONTag.parse('<int>null')
+	}
+	const result = stringify(serialize(data))
+	t.same(result, `(31){"string":null,"int":<int>null}`)
+	t.end()
+})
+
+tap.test('object property references parsed proxy', t => {
+	const parser = new Parser()
+	parser.immutable = false
+	const root = parser.parse(`(10){"foo":~1}
+(14){"name":"Foo"}`)
+	root.other = root.foo
+	t.same(stringify(serialize(root)), `(21){"foo":~1,"other":~1}
+(14){"name":"Foo"}`)
+	t.same(stringify(serialize(root, {changes: true})), `(21){"foo":~1,"other":~1}`)
 	t.end()
 })
